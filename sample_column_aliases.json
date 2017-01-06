@@ -1,0 +1,28 @@
+{
+    "organism": {
+        "alias": "species",
+        "column_aliases": {
+            "Homo Sapiens": "human"
+        }
+    },
+    "data_file1": {
+        "alias": "filename"
+    },
+    "data_file2": {
+        "alias": "filename"
+    },
+    "data_file1_type": {
+        "alias": "fileFormat",
+        "column_aliases": {
+            "BAM": "bam",
+            "FASTQ": "fastq"
+        }
+    },
+    "data_file2_type": {
+        "alias": "fileFormat",
+        "column_aliases": {
+            "BAM": "bam",
+            "FASTQ": "fastq"
+        }
+    }
+}

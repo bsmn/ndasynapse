@@ -1,0 +1,15 @@
+{
+    "gender": {
+        "alias": "sex",
+        "column_aliases": {
+            "M": "male",
+            "F": "female"
+        }
+    },
+    "sample_id_original": {
+        "alias": "subject_sample_id_original"
+    },
+    "biorepository": {
+        "alias": "subject_biorepository"
+    }
+}
