@@ -49,16 +49,7 @@ content_type_dict = {'.gz': 'application/x-gzip', '.bam': 'application/octet-str
                      '.zip': 'application/zip'}
 
 
-# # Credential configuration for NDA
-
-# In[2]:
-
-s3 = boto3.resource("s3")
-obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
-
-config = json.loads(obj.get()['Body'].read())
-
-ndaconfig = config['nda']
+# Credential configuration for NDA
 
 get_nda_s3_session(username, password):
     tokengenerator = nda_aws_token_generator.NDATokenGenerator()
@@ -70,12 +61,9 @@ get_nda_s3_session(username, password):
 
     s3_nda = session.resource("s3")
 
-s3_nda = get_nda_s3_session(ndaconfig['username'], ndaconfig['password'])
-
-# # Get Samples
-#
-# Use the NDA api to get the `genomics_sample03` records for this GUID.
 def get_samples(auth, guid):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+    
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
@@ -204,6 +192,8 @@ def merge_tissues_subjects(tissues, subjects):
     # Drop this as it will come back from the samples
     btb_subjects.drop('sample_id_original', axis=1, inplace=True)
 
+    return btb_subjects
+
 def merge_tissues_samples(btb_subjects, samples):
     """Merge the tissue/subject with the samples to make a complete metadata table."""
 
@@ -212,6 +202,8 @@ def merge_tissues_samples(btb_subjects, samples):
                              right_on=["src_subject_id", "subjectkey", "sample_id_biorepository"])
 
     metadata = metadata.drop_duplicates()
+
+    return metadata
 
 def get_manifests(bucket):
     """Get list of `.manifest` files from the NDA-BSMN bucket.
