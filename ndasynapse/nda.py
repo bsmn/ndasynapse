@@ -11,19 +11,11 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
-logger = logging.getLogger("main")
+logger = logging.getLogger("nda")
 logger.setLevel(logging.DEBUG)
 #create console handler and set level to debug
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-
-# NDA Configuration
-REFERENCE_GUID = 'NDAR_INVRT663MBL'
-
-# This is an old genomics subject
-EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
-# EXCLUDE_EXPERIMENTS = ('534', '535')
-EXCLUDE_EXPERIMENTS = ()
 
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                     'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
@@ -31,27 +23,14 @@ METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_
                     'sample_amount', 'phenotype', 'comments_misc', 'sample_unit', 'fileFormat']
 
 SAMPLE_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
-                  'sample_id_biorepository', 'organism', 'species', 'sample_amount', 'sample_unit',
+                  'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site']
 
 SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype',
                    'subject_sample_id_original', 'sample_description', 'subject_biorepository',
                    'sex']
 
-NDA_BUCKET_NAME = 'nda-bsmn'
-
-# Synapse configuration
-synapse_data_folder = 'syn7872188'
-synapse_data_folder_id = int(synapse_data_folder.replace('syn', ''))
-storage_location_id = '9209'
-
-content_type_dict = {'.gz': 'application/x-gzip', '.bam': 'application/octet-stream',
-                     '.zip': 'application/zip'}
-
-
-# Credential configuration for NDA
-
-get_nda_s3_session(username, password):
+def get_nda_s3_session(username, password):
     tokengenerator = nda_aws_token_generator.NDATokenGenerator()
     mytoken = tokengenerator.generate_token(username, password)
 
@@ -61,9 +40,11 @@ get_nda_s3_session(username, password):
 
     s3_nda = session.resource("s3")
 
+    return s3_nda
+
 def get_samples(auth, guid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
-    
+
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
@@ -78,23 +59,21 @@ def get_samples(auth, guid):
     colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
     samples.columns = colnames_lower
 
-    # exclude some experiments
-    samples = samples[~samples.experiment_id.isin(EXCLUDE_EXPERIMENTS)]
+    datafile_column_names = samples.filter(regex="data_file\d+$").columns.tolist()
 
-    samples1 = samples[SAMPLE_COLUMNS + ['data_file1', 'data_file1_type']]
+    samples_final = pandas.DataFrame()
 
-    samples1.rename(columns={'data_file1': 'data_file', 'data_file1_type': 'fileFormat'},
-                    inplace=True)
+    for col in datafile_column_names:
+        samples_tmp = samples[SAMPLE_COLUMNS + [col, '%s_type' % col]]
 
-    samples2 = samples[SAMPLE_COLUMNS + ['data_file2', 'data_file2_type']]
+        samples_tmp.rename(columns={col: 'data_file', '%s_type' % col: 'fileFormat'},
+                           inplace=True)
 
-    samples2.rename(columns={'data_file2': 'data_file', 'data_file2_type': 'fileFormat'},
-                    inplace=True)
+        samples_final = pandas.concat([samples_final, samples_tmp], ignore_index=True)
 
-    samples3 = pandas.concat([samples1, samples2], ignore_index=True)
-    samples3.filter(~samples3.data_file.isnull())
+    samples_final.filter(~samples_final.data_file.isnull())
 
-    return samples3
+    return samples_final
 
 def process_samples(df):
     df['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
@@ -112,6 +91,8 @@ def process_samples(df):
 
     df['species'] = df.organism.replace(['Homo Sapiens'], ['Human'])
 
+    df.drop(["organism"], axis=1, inplace=True)
+
     return df
 
 def get_subjects(auth, guid):
@@ -122,8 +103,10 @@ def get_subjects(auth, guid):
 
     subject_guid_data = json.loads(r.text)
 
+    tmp = []
+
     for row in subject_guid_data['age'][0]['dataStructureRow']:
-        foo = lambda row: {col['name']: col['value'] for col in row['dataElement']}
+        foo = {col['name']: col['value'] for col in row['dataElement']}
         tmp.append(foo)
 
     df = pandas.io.json.json_normalize(tmp)
@@ -134,13 +117,11 @@ def get_subjects(auth, guid):
     return df
 
 def process_subjects(df):
-    df = df[~df.GENOMICS_SUBJECT02_ID.isin(EXCLUDE_GENOMICS_SUBJECTS)]
-
     df = df.assign(sex=df.gender.replace(['M', 'F'], ['male', 'female']),
                    subject_sample_id_original=df.sample_id_original,
                    subject_biorepository=df.biorepository)
 
-    df = df[SUBJECT_COLUMNS]
+    df.drop(["gender", "sample_id_original", "biorepository"], axis=1, inplace=True)
 
     df = df.drop_duplicates()
 
@@ -167,6 +148,10 @@ def process_tissues(df):
     colnames_lower = map(lambda x: x.lower(), df.columns.tolist())
     df.columns = colnames_lower
 
+    df = df.assign(sex=df.gender.replace(['M', 'F'], ['male', 'female']))
+
+    df.drop(["gender"], axis=1, inplace=True)
+
     # This makes them non-unique, so drop them
     df.drop('nichd_btb02_id', axis=1, inplace=True)
 
@@ -183,8 +168,8 @@ def merge_tissues_subjects(tissues, subjects):
     """
 
     btb_subjects = tissues.merge(subjects, how="left",
-                                 left_on=["src_subject_id", "subjectkey", "race", "gender"],
-                                 right_on=["src_subject_id", "subjectkey", "race", "gender"])
+                                 left_on=["src_subject_id", "subjectkey", "race", "sex"],
+                                 right_on=["src_subject_id", "subjectkey", "race", "sex"])
 
     # Rename this column to simplify merging with the sample table
     btb_subjects = btb_subjects.assign(sample_id_biorepository=btb_subjects.sample_id_original)

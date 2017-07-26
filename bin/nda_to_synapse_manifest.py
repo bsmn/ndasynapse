@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import json
 import synapseclient
@@ -27,18 +29,6 @@ EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
 # EXCLUDE_EXPERIMENTS = ('534', '535')
 EXCLUDE_EXPERIMENTS = ()
 
-METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
-                    'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
-                    'subject_biorepository', 'sample_description', 'species', 'site', 'sex',
-                    'sample_amount', 'phenotype', 'comments_misc', 'sample_unit', 'fileFormat']
-
-SAMPLE_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
-                  'sample_id_biorepository', 'organism', 'species', 'sample_amount', 'sample_unit',
-                  'biorepository', 'comments_misc', 'site']
-
-SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype',
-                   'subject_sample_id_original', 'sample_description', 'subject_biorepository',
-                   'sex']
 
 NDA_BUCKET_NAME = 'nda-bsmn'
 
@@ -50,53 +40,71 @@ storage_location_id = '9209'
 content_type_dict = {'.gz': 'application/x-gzip', '.bam': 'application/octet-stream',
                      '.zip': 'application/zip'}
 
-# # Credential configuration for NDA
-s3 = boto3.resource("s3")
-obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
+def main():
+    # # Credential configuration for NDA
+    s3 = boto3.resource("s3")
+    obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
 
-config = json.loads(obj.get()['Body'].read())
+    config = json.loads(obj.get()['Body'].read())
 
-ndaconfig = config['nda']
+    ndaconfig = config['nda']
 
-s3_nda = ndasynapse.nda.get_nda_s3_session(ndaconfig['username'], ndaconfig['password'])
+    s3_nda = ndasynapse.nda.get_nda_s3_session(ndaconfig['username'], ndaconfig['password'])
 
-# Synapse
-# Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
-# Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
 
-auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
-bucket = s3_nda.Bucket(NDA_BUCKET_NAME)
+    # Synapse
+    # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
+    # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
 
-samples = ndasynapse.nda.get_samples(auth, guid=REFERENCE_GUID)
-samples = ndasynapse.nda.process_samples(samples)
-samples.to_csv("./samples.csv")
+    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
+    bucket = s3_nda.Bucket(NDA_BUCKET_NAME)
 
-subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
-subjects = ndasynapse.nda.process_subjects(subjects)
+    samples = ndasynapse.nda.get_samples(auth, guid=REFERENCE_GUID)
 
-subjects.to_csv("./subjects.csv")
+    # exclude some experiments
+    samples = samples[~samples.experiment_id.isin(EXCLUDE_EXPERIMENTS)]
+    samples = ndasynapse.nda.process_samples(samples)
 
-btb = ndasynapse.nda.get_tissues(auth, REFERENCE_GUID)
-btb = ndasynapse.nda.process_tissues(btb)
-btb.to_csv('./btb.csv')
+    # samples.to_csv("./samples.csv")
 
-btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)
-btb_subjects.to_csv('btb_subjects.csv')
+    subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
+    subjects = ndasynapse.nda.process_subjects(subjects)
 
-manifest = ndasynapse.nda.get_manifests(bucket)
-# Only keep the files that are in the metadata table
-manifest = ndasynapse.nda.manifest[manifest.filename.isin(metadata.data_file)]
-manifest.to_csv('./manifest.csv')
+    # Exclude some subjects
+    subjects = subjects[~subjects.genomics_subject02_id.isin(EXCLUDE_GENOMICS_SUBJECTS)]
 
-metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
-metadata_manifest.to_csv('./metadata_manifest.csv')
+    # subjects.to_csv("./subjects.csv")
 
-fh_list = ndasynapse.synapse.create_synapse_filehandles(metadata_manifest, NDA_BUCKET_NAME)
+    btb = ndasynapse.nda.get_tissues(auth, REFERENCE_GUID)
+    btb = ndasynapse.nda.process_tissues(btb)
+    # btb.to_csv('./btb.csv')
 
-fh_ids = map(lambda x: x['id'], fh_list)
-synapse_manifest = metadata_manifest[METADATA_COLUMNS]
-synapse_manifest.dataFileHandleId = fh_ids
-synapse_manifest.Path = None
+    print subjects.columns
 
-# f_list = ndasynapse.synapse.store(synapse_manifest)
-# a = a.to_dict()
+    print btb.columns
+    
+    btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)
+    btb_subjects.to_csv('btb_subjects.csv')
+    #
+    # manifest = ndasynapse.nda.get_manifests(bucket)
+    # # Only keep the files that are in the metadata table
+    # manifest = ndasynapse.nda.manifest[manifest.filename.isin(metadata.data_file)]
+    # manifest.to_csv('./manifest.csv')
+    #
+    # metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
+    # metadata_manifest.to_csv('./metadata_manifest.csv')
+    #
+    # fh_list = ndasynapse.synapse.create_synapse_filehandles(metadata_manifest, NDA_BUCKET_NAME)
+    #
+    # fh_ids = map(lambda x: x['id'], fh_list)
+    # synapse_manifest = metadata_manifest[METADATA_COLUMNS]
+    # synapse_manifest.dataFileHandleId = fh_ids
+    # synapse_manifest.Path = None
+    #
+    # syn = synapseclient.login(silent=True)
+    #
+    # # f_list = ndasynapse.synapse.store(synapse_manifest)
+    # # a = a.to_dict()
+
+if __name__ == "__main__":
+    main()

@@ -8,4 +8,5 @@ setup(name='ndasynapse',
       author_email='kenneth.daily@sagebase.org',
       license='MIT',
       packages=['ndasynapse'],
+      scripts=['bin/nda_to_synapse_manifest.py'],
       zip_safe=False)

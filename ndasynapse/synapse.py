@@ -11,11 +11,7 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
-logger = logging.getLogger("main")
-logger.setLevel(logging.DEBUG)
-#create console handler and set level to debug
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+logger = logging.getLogger("synapse").setLevel(logging.DEBUG)
 
 # NDA Configuration
 REFERENCE_GUID = 'NDAR_INVRT663MBL'
@@ -29,7 +25,6 @@ storage_location_id = '9209'
 content_type_dict = {'.gz': 'application/x-gzip', '.bam': 'application/octet-stream',
                      '.zip': 'application/zip'}
 
-syn = synapseclient.login(silent=True)
 dry_run = False
 
 def create_synapse_filehandles(metadata_manifest, bucket_name):
