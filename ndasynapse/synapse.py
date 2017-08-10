@@ -1,8 +1,8 @@
 import os
 import json
-import requests
 import logging
 
+import requests
 import pandas
 import boto3
 import synapseclient
