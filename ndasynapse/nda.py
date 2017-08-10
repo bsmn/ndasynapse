@@ -1,3 +1,4 @@
+import io
 import os
 import json
 import synapseclient
@@ -11,11 +12,13 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
-logger = logging.getLogger("nda")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-#create console handler and set level to debug
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                     'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
@@ -24,7 +27,7 @@ METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_
 
 SAMPLE_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
-                  'biorepository', 'comments_misc', 'site']
+                  'biorepository', 'comments_misc', 'site', 'genomics_sample03_id']
 
 SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype',
                    'subject_sample_id_original', 'sample_description', 'subject_biorepository',
@@ -91,7 +94,9 @@ def process_samples(df):
 
     df['species'] = df.organism.replace(['Homo Sapiens'], ['Human'])
 
-    df.drop(["organism"], axis=1, inplace=True)
+    # df.drop(["organism"], axis=1, inplace=True)
+
+    # df = df[SAMPLE_COLUMNS]
 
     return df
 
@@ -111,12 +116,19 @@ def get_subjects(auth, guid):
 
     df = pandas.io.json.json_normalize(tmp)
 
+
     colnames_lower = map(lambda x: x.lower(), df.columns.tolist())
     df.columns = colnames_lower
 
     return df
 
-def process_subjects(df):
+def process_subjects(df, exclude_genomics_subjects=[]):
+    # For some reason there are different ids for this that aren't usable
+    # anywhere, so dropping them for now
+    # Exclude some subjects
+    df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
+    df.drop(["genomics_subject02_id"], axis=1, inplace=True)
+
     df = df.assign(sex=df.gender.replace(['M', 'F'], ['male', 'female']),
                    subject_sample_id_original=df.sample_id_original,
                    subject_biorepository=df.biorepository)
@@ -124,6 +136,8 @@ def process_subjects(df):
     df.drop(["gender", "sample_id_original", "biorepository"], axis=1, inplace=True)
 
     df = df.drop_duplicates()
+
+    # df = df[SUBJECT_COLUMNS]
 
     return df
 
@@ -202,10 +216,11 @@ def get_manifests(bucket):
     manifest = pandas.DataFrame()
 
     for m in manifests:
+        manifest_body = io.BytesIO(m.get()['Body'].read())
         folder = os.path.split(m.key)[0]
-        tmp = pandas.read_csv(m.get()['Body'], delimiter="\t", header=None)
+        tmp = pandas.read_csv(manifest_body, delimiter="\t", header=None)
         tmp.columns = ('filename', 'md5', 'size')
-        tmp.filename = "s3://%s/%s/" % (NDA_BUCKET_NAME, folder,) + tmp.filename.map(str)
+        tmp.filename = "s3://%s/%s/" % (bucket.name, folder,) + tmp.filename.map(str)
         manifest = pandas.concat([manifest, tmp])
 
     manifest.reset_index(drop=True, inplace=True)
