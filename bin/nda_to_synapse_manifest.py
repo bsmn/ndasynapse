@@ -29,8 +29,7 @@ REFERENCE_GUID = 'NDAR_INVRT663MBL'
 # This is an old genomics subject
 EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
 # EXCLUDE_EXPERIMENTS = ('534', '535')
-EXCLUDE_EXPERIMENTS = ('')
-EXCLUDE_SUBMISSIONS = ('13520', )
+EXCLUDE_EXPERIMENTS = ()
 
 NDA_BUCKET_NAME = 'nda-bsmn'
 
@@ -45,6 +44,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry_run", action="store_true", default=False)
+    parser.add_argument("--get_manifests", action="store_true", default=False)
 
     args = parser.parse_args()
 
@@ -84,17 +84,23 @@ def main():
 
     metadata = ndasynapse.nda.merge_tissues_samples(btb_subjects, samples)
 
-    manifest = ndasynapse.nda.get_manifests(bucket)
-    # Only keep the files that are in the metadata table
-    manifest = manifest[manifest.filename.isin(metadata.data_file)]
-
-    metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
+    if args.get_manifests:
+        manifest = ndasynapse.nda.get_manifests(bucket)
+        # Only keep the files that are in the metadata table
+        manifest = manifest[manifest.filename.isin(metadata.data_file)]
+        metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
+    else:
+        metadata_manifest = metadata
+        metadata_manifest = metadata_manifest.reindex(columns = metadata_manifest.columns.tolist() + ndasynapse.nda.METADATA_COLUMNS)
 
     metadata_manifest.to_csv("/dev/stdout")
 
     if not args.dry_run:
         syn = synapseclient.login(silent=True)
-        fh_list = ndasynapse.synapse.create_synapse_filehandles(syn, metadata_manifest, NDA_BUCKET_NAME, storage_location_id)
+        fh_list = ndasynapse.synapse.create_synapse_filehandles(syn,
+                                                                metadata_manifest,
+                                                                NDA_BUCKET_NAME,
+                                                                storage_location_id)
 
         # fh_ids = map(lambda x: x['id'], fh_list)
         # synapse_manifest = metadata_manifest[METADATA_COLUMNS]

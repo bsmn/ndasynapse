@@ -34,6 +34,8 @@ SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype'
                    'subject_sample_id_original', 'sample_description', 'subject_biorepository',
                    'sex']
 
+MANIFEST_COLUMNS = ['filename', 'md5', 'size']
+
 def get_nda_s3_session(username, password):
     tokengenerator = nda_aws_token_generator.NDATokenGenerator()
     mytoken = tokengenerator.generate_token(username, password)
@@ -219,8 +221,14 @@ def get_manifests(bucket):
     for m in manifests:
         manifest_body = io.BytesIO(m.get()['Body'].read())
         folder = os.path.split(m.key)[0]
-        tmp = pandas.read_csv(manifest_body, delimiter="\t", header=None)
-        tmp.columns = ('filename', 'md5', 'size')
+
+        try:
+            tmp = pandas.read_csv(manifest_body, delimiter="\t", header=None)
+        except pandas.errors.EmptyDataError as e:
+            logger.info("No data in the manifest for %s" % (m,))
+            continue
+
+        tmp.columns = MANIFEST_COLUMNS
         tmp.filename = "s3://%s/%s/" % (bucket.name, folder,) + tmp.filename.map(str)
         manifest = pandas.concat([manifest, tmp])
 
