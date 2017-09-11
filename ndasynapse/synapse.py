@@ -76,6 +76,29 @@ def create_synapse_filehandles(syn, metadata_manifest, bucket_name, storage_loca
 
     return fh_list
 
+def entity_by_md5(syn, contentMd5, parentId=None, cmp=None):
+    """Gets the first entity in a list of entities identified by md5.
+
+    Optionally takes a comparison function to pass to sorted, and a parent id for filtering.
+
+    """
+
+    # Check if it exists in Synapse
+    res = syn.restGET("/entity/md5/%s" % (contentMd5, ))['results']
+
+    if cmp:
+        res = sorted(res, cmp=cmp)
+
+    if parentId:
+        res = filter(lambda x: x['parentId'] == parentId, res)
+
+    try:
+        entity = syn.get(res[0]['id'], version=res[0]['versionNumber'])
+    except KeyError:
+        entity = None
+
+    return entity
+
 def store(syn, synapse_manifest, filehandles, dry_run=False):
 
     f_list = []
@@ -91,12 +114,12 @@ def store(syn, synapse_manifest, filehandles, dry_run=False):
                 stored_file_handle = syn.restPOST('/externalFileHandle/s3',
                                                   json.dumps(file_handle),
                                                   endpoint=syn.fileHandleEndpoint)
-                x.dataFileHandleId = stored_file_handle['id']
+                a['dataFileHandleId'] = stored_file_handle['id']
             else:
                 stored_file_handle = file_handle
-                if stored_file_handle['id'] != x.dataFileHandleId:
+                if stored_file_handle['id'] != a['dataFileHandleId']:
                     raise ValueError("Not equal: %s != %s" % (stored_file_handle['id'],
-                                                              x.dataFileHandleId))
+                                                              a['dataFileHandleId']))
 
             f = synapseclient.File(**a)
             f = syn.store(f, forceVersion=False)
