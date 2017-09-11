@@ -45,9 +45,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--local", action="store_true", default=False)
     parser.add_argument("--dry_run", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--get_experiments", action="store_true", default=False)
     parser.add_argument("--get_manifests", action="store_true", default=False)
+    parser.add_argument("--dataset_ids", default=None, nargs="*")
 
     args = parser.parse_args()
 
@@ -74,6 +77,10 @@ def main():
     samples = samples[~samples.experiment_id.isin(EXCLUDE_EXPERIMENTS)]
     samples = ndasynapse.nda.process_samples(samples)
 
+    # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
+    samples.loc[samples['experiment_id'].isin(['741', '743', '744', '745', '746']), 'site'] = 'U01MH106892'
+    samples.loc[samples['site'] == 'Salk', 'site'] = 'U01MH106882'
+
     # samples.to_csv("./samples.csv")
 
     subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
@@ -87,22 +94,40 @@ def main():
 
     metadata = ndasynapse.nda.merge_tissues_samples(btb_subjects, samples)
 
-    if args.get_manifests:
-        manifest = ndasynapse.nda.get_manifests(bucket)
-        # Only keep the files that are in the metadata table
-        manifest = manifest[manifest.filename.isin(metadata.data_file)]
-        metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
-    else:
-        metadata_manifest = metadata
-        metadata_manifest = metadata_manifest.reindex(columns = metadata_manifest.columns.tolist() + ndasynapse.nda.METADATA_COLUMNS)
+    if args.dataset_ids:
+        metadata = metadata[metadata.datasetid.isin(args.dataset_ids)]
+        logger.info("Filtered for requested dataset IDs.")
 
-    # metadata_manifest.to_csv("/dev/stdout")
+    if args.get_experiments:
+        if args.verbose:
+            logger.info("Getting experiments")
 
-    # metadata_manifest = metadata_manifest.loc[0:5]
+        expts = ndasynapse.nda.get_experiments(auth,
+                                               metadata.experiment_id.drop_duplicates().tolist(),
+                                               verbose=args.verbose)
+
+        expts = ndasynapse.nda.process_experiments(expts)
+
+        metadata = metadata.merge(expts, how="left", left_on="experiment_id",
+                                  right_on="experiment_id")
+        logger.info("Retrieved experiments.")
+
+    # if args.get_manifests:
+    #     manifest = ndasynapse.nda.get_manifests(bucket)
+    #     # Only keep the files that are in the metadata table
+    #     manifest = manifest[manifest.filename.isin(metadata.data_file)]
+    #     metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
+    # else:
+    metadata_manifest = metadata
+    # metadata_manifest = metadata_manifest.reindex(columns = metadata_manifest.columns.tolist() + ndasynapse.nda.METADATA_COLUMNS)
+
+    metadata_manifest['consortium'] = "BSMN"
 
     logger.info("Finished creating manifest.")
 
-    if not args.dry_run:
+    if args.local:
+        metadata_manifest.to_csv("/dev/stdout", index=False, encoding='utf-8')
+    else:
         syn = synapseclient.login(silent=True)
         fh_list = ndasynapse.synapse.create_synapse_filehandles(syn=syn,
                                                                 metadata_manifest=metadata_manifest,
@@ -110,9 +135,9 @@ def main():
                                                                 storage_location_id=storage_location_id,
                                                                 verbose=args.verbose)
         fh_ids = map(lambda x: x.get('id', None), fh_list)
-        logger.debug(fh_ids)
+        logger.debug(fh_list)
 
-        synapse_manifest = metadata_manifest[ndasynapse.nda.METADATA_COLUMNS]
+        synapse_manifest = metadata_manifest
         synapse_manifest['dataFileHandleId'] = fh_ids
         synapse_manifest['path'] = None
 
@@ -120,14 +145,17 @@ def main():
         synapse_manifest['name'] = fh_names
         synapse_manifest['parentId'] = synapse_data_folder
 
-        syn = synapseclient.login(silent=True)
+        if not args.dry_run:
+            syn = synapseclient.login(silent=True)
 
-        f_list = ndasynapse.synapse.store(syn=syn,
-                                          synapse_manifest=synapse_manifest,
-                                          filehandles=fh_list,
-                                          dry_run=False)
+            f_list = ndasynapse.synapse.store(syn=syn,
+                                              synapse_manifest=synapse_manifest,
+                                              filehandles=fh_list,
+                                              dry_run=False)
 
-        sys.stderr.write("%s\n" % (f_list, ))
+            sys.stderr.write("%s\n" % (f_list, ))
+        else:
+            synapse_manifest.to_csv("/dev/stdout", index=False, encoding='utf-8')
 
 if __name__ == "__main__":
     main()
