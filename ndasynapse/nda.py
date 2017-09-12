@@ -15,24 +15,37 @@ pandas.options.display.max_colwidth = 1000
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+# ch = logging.StreamHandler()
+# ch.setLevel(logging.DEBUG)
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# ch.setFormatter(formatter)
+# logger.addHandler(ch)
 
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                     'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
                     'subject_biorepository', 'sample_description', 'species', 'site', 'sex',
                     'sample_amount', 'phenotype', 'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
+SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
-                  'biorepository', 'comments_misc', 'site', 'genomics_sample03_id']
+                  'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
+                  'src_subject_id', 'subjectkey']
 
 SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype',
                    'subject_sample_id_original', 'sample_description', 'subject_biorepository',
                    'sex']
+
+EXPERIMENT_COLUMNS_CHANGE = {'additionalinformation.analysisSoftware.software': 'analysisSoftwareName',
+                             'additionalinformation.equipment.equipmentName': 'equipmentName',
+                             'experimentparameters.molecule.moleculeName': 'moleculeName',
+                             'experimentparameters.platform.platformName': 'platformName',
+                             'experimentparameters.platform.platformSubType': 'platformSubType',
+                             'experimentparameters.platform.vendorName': 'vendorName',
+                             'experimentparameters.technology.applicationName': 'applicationName',
+                             'experimentparameters.technology.applicationSubType': 'applicationSubType',
+                             'extraction.extractionProtocols.protocolName': 'extractionProtocolName',
+                             'extraction.extractionKits.extractionKit': 'extractionKit',
+                             'processing.processingKits.processingKit': 'processingKit'}
 
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
 
@@ -56,11 +69,20 @@ def get_samples(auth, guid):
 
     guid_data = json.loads(r.text)
 
-    # Get data files from samples. There are currently up to two files per row.
-    tmp = [{col['name']: col['value'] for col in row['dataElement']}
-           for row in guid_data['age'][0]['dataStructureRow']]
+    # Get data files from samples.
+    tmp = []
+
+    for row in guid_data['age'][0]['dataStructureRow']:
+        tmp_row_dict = {}
+        for col in row['dataElement']:
+            tmp_row_dict[col['name']] = col['value']
+            if col.get('md5sum') and col.get('size') and col['name'].startswith('DATA_FILE'):
+                tmp_row_dict["%s_md5sum" % (col['name'], )] = col['md5sum']
+                tmp_row_dict["%s_size" % (col['name'], )] = col['size']
+        tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
+    samples['datasetId'] = map(lambda x: x['datasetId'], guid_data['age'][0]['dataStructureRow'])
 
     colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
     samples.columns = colnames_lower
@@ -70,14 +92,20 @@ def get_samples(auth, guid):
     samples_final = pandas.DataFrame()
 
     for col in datafile_column_names:
-        samples_tmp = samples[SAMPLE_COLUMNS + [col, '%s_type' % col]]
+        samples_tmp = samples[SAMPLE_COLUMNS + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
 
-        samples_tmp.rename(columns={col: 'data_file', '%s_type' % col: 'fileFormat'},
+        samples_tmp.rename(columns={col: 'data_file',
+                                    '%s_type' % col: 'fileFormat',
+                                    '%s_md5sum' % col: 'md5',
+                                    '%s_size' % col: 'size'},
                            inplace=True)
 
         samples_final = pandas.concat([samples_final, samples_tmp], ignore_index=True)
 
-    samples_final.filter(~samples_final.data_file.isnull())
+    missing_data_file = samples_final.data_file.isnull()
+
+    logger.info("These datasets are missing a data file and will be dropped: %s" % (samples_final.datasetid[missing_data_file].drop_duplicates().tolist(),))
+    samples_final = samples_final[~missing_data_file]
 
     return samples_final
 
@@ -175,6 +203,81 @@ def process_tissues(df):
     df = df.drop_duplicates()
 
     return df
+
+def flattenjson( b, delim ):
+    val = {}
+    for i in b.keys():
+        if isinstance( b[i], dict ):
+            get = flattenjson( b[i], delim )
+            for j in get.keys():
+                val[ i + delim + j ] = get[j]
+        else:
+            val[i] = b[i]
+
+    return val
+
+def get_experiments(auth, experiment_ids, verbose=False):
+    df = pandas.DataFrame()
+
+    for experiment_id in experiment_ids:
+
+        url = "https://ndar.nih.gov/api/experiment/{}".format(experiment_id)
+        r = requests.get(url, auth=auth, headers={'Accept': 'application/json'})
+
+        if verbose:
+            logger.debug("Retrieved {}".format(url))
+
+        guid_data = json.loads(r.text)
+        guid_data_flat = flattenjson(guid_data[u'omicsOrFMRIOrEEG']['sections'], '.')
+
+        fix_keys = ['processing.processingKits.processingKit',
+                   'additionalinformation.equipment.equipmentName',
+                   'extraction.extractionKits.extractionKit',
+                    'additionalinformation.analysisSoftware.software']
+
+        for key in fix_keys:
+            foo = guid_data_flat[key]
+            tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
+            guid_data_flat[key] = tmp
+
+        foo = guid_data_flat['processing.processingProtocols.processingProtocol']
+        tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
+        guid_data_flat['processing.processingProtocols.processingProtocol'] = tmp
+
+        guid_data_flat['extraction.extractionProtocols.protocolName'] = ",".join(
+            guid_data_flat['extraction.extractionProtocols.protocolName'])
+
+        guid_data_flat['experiment_id'] = experiment_id
+
+        df = df.append(guid_data_flat, ignore_index=True)
+
+    return df
+
+def process_experiments(df):
+    df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
+    df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
+    df2 = pandas.concat([df, df_change], axis=1)
+    df2 = df2.rename(columns = lambda x: x.replace(".", "_"))
+    df2['platform'] = df2['equipmentName'].replace({'Illumina HiSeq 2500,Illumina NextSeq 500': 'HiSeq2500,NextSeq500',
+                                                    'Illumina NextSeq 500,Illumina HiSeq 2500': 'HiSeq2500,NextSeq500',
+                                                    'Illumina HiSeq 4000,Illumina MiSeq': 'HiSeq4000,MiSeq',
+                                                    'Illumina MiSeq,Illumina HiSeq 4000': 'HiSeq4000,MiSeq',
+                                                    'Illumina NextSeq 500': 'NextSeq500',
+                                                    'Illumina HiSeq 2500': 'HiSeq2500',
+                                                    'Illumina HiSeq X Ten': 'HiSeqX',
+                                                    'Illumina HiSeq 4000': 'HiSeq4000',
+                                                    'Illumina MiSeq': 'MiSeq',
+                                                    'BioNano IrysView': 'BionanoIrys'},
+                                                  inplace=False)
+
+    df2['assay'] = df2['applicationSubType'].replace({"Whole genome sequencing": "wholeGenomeSeq",
+                                                      "Exome sequencing": "exomeSeq",
+                                                      "Optical genome imaging": "wholeGenomeOpticalImaging",
+                                                      }, inplace=False)
+
+    df2['assay'][df2['experiment_id'].isin(['675', '777', '778'])] = "targetedSequencing"
+
+    return df2
 
 def merge_tissues_subjects(tissues, subjects):
     """Merge together the tissue file and the subjects file.
