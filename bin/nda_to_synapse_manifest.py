@@ -35,9 +35,6 @@ EXCLUDE_EXPERIMENTS = ()
 NDA_BUCKET_NAME = 'nda-bsmn'
 
 # Synapse configuration
-# synapse_data_folder = 'syn7872188'
-synapse_data_folder = 'syn10380539'
-synapse_data_folder_id = int(synapse_data_folder.replace('syn', ''))
 storage_location_id = '9209'
 
 def main():
@@ -50,6 +47,7 @@ def main():
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--get_experiments", action="store_true", default=False)
     parser.add_argument("--get_manifests", action="store_true", default=False)
+    parser.add_argument("--synapse_data_folder", nargs=1)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
 
     args = parser.parse_args()
@@ -135,7 +133,6 @@ def main():
                                                                 storage_location_id=storage_location_id,
                                                                 verbose=args.verbose)
         fh_ids = map(lambda x: x.get('id', None), fh_list)
-        logger.debug(fh_list)
 
         synapse_manifest = metadata_manifest
         synapse_manifest['dataFileHandleId'] = fh_ids
@@ -143,7 +140,7 @@ def main():
 
         fh_names = map(synapseclient.utils.guess_file_name, metadata_manifest.data_file.tolist())
         synapse_manifest['name'] = fh_names
-        synapse_manifest['parentId'] = synapse_data_folder
+        synapse_manifest['parentId'] = args.synapse_data_folder
 
         if not args.dry_run:
             syn = synapseclient.login(silent=True)
