@@ -27,6 +27,20 @@ content_type_dict = {'.gz': 'application/x-gzip',
                      '.bam': 'application/octet-stream',
                      '.zip': 'application/zip'}
 
+def check_existing_by_datasetid(syn, datasetids, file_view_id):
+    """Check a file view that has a 'datasetid' column to see which datasetids exist.
+
+    """
+
+    res = syn.tableQuery('select id,datasetid from %s' % (file_view_id, ))
+    d = res.asDataFrame()
+
+    existing_datasetids = set(d.datasetid.tolist())
+    given_datasetids = set(datasetids)
+
+    return {'exists': given_datasetids.intersection(existing_datasetids),
+            'not_exists': given_datasetids.difference(existing_datasetids)}
+
 def create_synapse_filehandles(syn, metadata_manifest, bucket_name, storage_location_id, verbose=False):
     """Create a list of Synapse file handles (S3FileHandles) to link to."""
 
@@ -99,7 +113,7 @@ def entity_by_md5(syn, contentMd5, parentId=None, cmp=None):
 
     return entity
 
-def store(syn, synapse_manifest, filehandles, dry_run=False):
+def store(syn, synapse_manifest, filehandles, dry_run=False, verbose=False):
 
     f_list = []
 
@@ -123,6 +137,9 @@ def store(syn, synapse_manifest, filehandles, dry_run=False):
 
             f = synapseclient.File(**a)
             f = syn.store(f, forceVersion=False)
+
+            if verbose:
+                logger.debug("Stored %s (%s) to parentId %s" % (row.name, f.id, row.parentId))
 
             f_list.append(f)
 
