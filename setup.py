@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='ndasynapse',
-      version='0.2.0',
+      version='0.3.0',
       description='NDA to Synapse sync',
       url='http://github.com/bsmn/ndasynapse',
       author='Kenneth Daily',
