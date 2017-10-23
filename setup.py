@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='ndasynapse',
-      version='0.2.0',
+      version='0.3.0',
       description='NDA to Synapse sync',
       url='http://github.com/bsmn/ndasynapse',
       author='Kenneth Daily',
@@ -16,5 +16,5 @@ setup(name='ndasynapse',
                         'requests>=2.18.1',
                         'nda-aws-token-generator>=1.1'],
       dependency_links=['https://github.com/kdaily/nda_aws_token_generator/tarball/master#egg=nda-aws-token-generator'],
-      scripts=['bin/nda_to_synapse_manifest.py'],
+      scripts=['bin/nda_to_synapse_manifest.py', 'bin/manifest_to_synapse.py'],
       zip_safe=False)

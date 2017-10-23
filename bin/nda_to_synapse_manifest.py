@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 
-import sys
 import os
 import json
 import logging
+import uuid
 
 import requests
 import pandas
 import boto3
 import synapseclient
-import nda_aws_token_generator
 import ndasynapse
 
 pandas.options.display.max_rows = None
@@ -35,21 +34,21 @@ EXCLUDE_EXPERIMENTS = ()
 NDA_BUCKET_NAME = 'nda-bsmn'
 
 # Synapse configuration
-# synapse_data_folder = 'syn7872188'
-synapse_data_folder = 'syn10380539'
-synapse_data_folder_id = int(synapse_data_folder.replace('syn', ''))
 storage_location_id = '9209'
+PROJECT_ID = 'syn5902559'
+UUID_COLUMNS = ['sample_id_biorepository', 'sample_id_original',
+                'experiment_id', 'datasetid']
+
 
 def main():
 
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local", action="store_true", default=False)
-    parser.add_argument("--dry_run", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--get_experiments", action="store_true", default=False)
-    parser.add_argument("--get_manifests", action="store_true", default=False)
+    parser.add_argument("--synapse_data_folder", nargs=1)
+    parser.add_argument("--uuid_columns", type=str, default=None)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
 
     args = parser.parse_args()
@@ -62,14 +61,11 @@ def main():
 
     ndaconfig = config['nda']
 
-    s3_nda = ndasynapse.nda.get_nda_s3_session(ndaconfig['username'], ndaconfig['password'])
-
     # Synapse
     # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
     # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
 
     auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
-    bucket = s3_nda.Bucket(NDA_BUCKET_NAME)
 
     samples = ndasynapse.nda.get_samples(auth, guid=REFERENCE_GUID)
 
@@ -78,17 +74,16 @@ def main():
     samples = ndasynapse.nda.process_samples(samples)
 
     # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
-    samples.loc[samples['experiment_id'].isin(['741', '743', '744', '745', '746']), 'site'] = 'U01MH106892'
+    change_grant_ids = ['741', '743', '744', '745', '746']
+    samples.loc[samples['experiment_id'].isin(change_grant_ids), 'site'] = 'U01MH106892'
     samples.loc[samples['site'] == 'Salk', 'site'] = 'U01MH106882'
 
-    # samples.to_csv("./samples.csv")
-
     subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
-    subjects = ndasynapse.nda.process_subjects(subjects, EXCLUDE_GENOMICS_SUBJECTS)
+    subjects = ndasynapse.nda.process_subjects(subjects,
+                                               EXCLUDE_GENOMICS_SUBJECTS)
 
     btb = ndasynapse.nda.get_tissues(auth, REFERENCE_GUID)
     btb = ndasynapse.nda.process_tissues(btb)
-    # btb.to_csv('./btb.csv')
 
     btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)
 
@@ -102,8 +97,9 @@ def main():
         if args.verbose:
             logger.info("Getting experiments")
 
+        experiment_ids = metadata.experiment_id.drop_duplicates().tolist()
         expts = ndasynapse.nda.get_experiments(auth,
-                                               metadata.experiment_id.drop_duplicates().tolist(),
+                                               experiment_ids,
                                                verbose=args.verbose)
 
         expts = ndasynapse.nda.process_experiments(expts)
@@ -112,50 +108,40 @@ def main():
                                   right_on="experiment_id")
         logger.info("Retrieved experiments.")
 
-    # if args.get_manifests:
-    #     manifest = ndasynapse.nda.get_manifests(bucket)
-    #     # Only keep the files that are in the metadata table
-    #     manifest = manifest[manifest.filename.isin(metadata.data_file)]
-    #     metadata_manifest = ndasynapse.nda.merge_metadata_manifest(metadata, manifest)
-    # else:
-    metadata_manifest = metadata
-    # metadata_manifest = metadata_manifest.reindex(columns = metadata_manifest.columns.tolist() + ndasynapse.nda.METADATA_COLUMNS)
+    # Look for duplicates based on base filename
+    # We are putting all files into a single folder, so can't conflict on name
+    # Decided to rename both the entity name and the downloadAs
+    metadata.loc[:, 'basename'] = metadata.data_file.apply(lambda x: os.path.basename(x))
 
-    metadata_manifest['consortium'] = "BSMN"
+    (good, bad) = ndasynapse.nda.find_duplicate_filenames(metadata)
 
-    logger.info("Finished creating manifest.")
-
-    if args.local:
-        metadata_manifest.to_csv("/dev/stdout", index=False, encoding='utf-8')
-    else:
+    if bad.shape[0] > 0:
         syn = synapseclient.login(silent=True)
-        fh_list = ndasynapse.synapse.create_synapse_filehandles(syn=syn,
-                                                                metadata_manifest=metadata_manifest,
-                                                                bucket_name=NDA_BUCKET_NAME,
-                                                                storage_location_id=storage_location_id,
-                                                                verbose=args.verbose)
-        fh_ids = map(lambda x: x.get('id', None), fh_list)
-        logger.debug(fh_list)
 
-        synapse_manifest = metadata_manifest
-        synapse_manifest['dataFileHandleId'] = fh_ids
-        synapse_manifest['path'] = None
+        namespace = uuid.UUID(ndasynapse.synapse.get_namespace(syn, PROJECT_ID))
+        bad_uuids = bad.data_file.apply(lambda x: uuid.uuid3(namespace,
+                                                             x))
+        bad_slugs = bad_uuids.apply(lambda x: ndasynapse.synapse.uuid2slug(x))
+        bad_slugs.name = 'slug'
 
-        fh_names = map(synapseclient.utils.guess_file_name, metadata_manifest.data_file.tolist())
-        synapse_manifest['name'] = fh_names
-        synapse_manifest['parentId'] = synapse_data_folder
+        bad_filename_info = pandas.concat([bad_slugs, bad['basename']], axis=1)
+        fileNameOverride = bad_filename_info.apply(lambda x: '_'.join(map(str, x)), axis=1)
 
-        if not args.dry_run:
-            syn = synapseclient.login(silent=True)
+        bad['fileName'] = fileNameOverride
+        good['fileName'] = good['basename']
 
-            f_list = ndasynapse.synapse.store(syn=syn,
-                                              synapse_manifest=synapse_manifest,
-                                              filehandles=fh_list,
-                                              dry_run=False)
+        metadata = pandas.concat([good, bad])
+    else:
+        metadata = good
 
-            sys.stderr.write("%s\n" % (f_list, ))
-        else:
-            synapse_manifest.to_csv("/dev/stdout", index=False, encoding='utf-8')
+    metadata.drop('basename', inplace=True, axis=1)
+
+    metadata['consortium'] = "BSMN"
+
+    logger.info("Writing manifest.")
+
+    metadata.to_csv("/dev/stdout", index=False, encoding='utf-8')
+
 
 if __name__ == "__main__":
     main()

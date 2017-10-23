@@ -6,7 +6,6 @@ import logging
 import requests
 import pandas
 import boto3
-import synapseclient
 import nda_aws_token_generator
 
 pandas.options.display.max_rows = None
@@ -47,7 +46,23 @@ EXPERIMENT_COLUMNS_CHANGE = {'additionalinformation.analysisSoftware.software': 
                              'extraction.extractionKits.extractionKit': 'extractionKit',
                              'processing.processingKits.processingKit': 'processingKit'}
 
+EQUIPMENT_NAME_REPLACEMENTS = {'Illumina HiSeq 2500,Illumina NextSeq 500': 'HiSeq2500,NextSeq500',
+                               'Illumina NextSeq 500,Illumina HiSeq 2500': 'HiSeq2500,NextSeq500',
+                               'Illumina HiSeq 4000,Illumina MiSeq': 'HiSeq4000,MiSeq',
+                               'Illumina MiSeq,Illumina HiSeq 4000': 'HiSeq4000,MiSeq',
+                               'Illumina NextSeq 500': 'NextSeq500',
+                               'Illumina HiSeq 2500': 'HiSeq2500',
+                               'Illumina HiSeq X Ten': 'HiSeqX',
+                               'Illumina HiSeq 4000': 'HiSeq4000',
+                               'Illumina MiSeq': 'MiSeq',
+                               'BioNano IrysView': 'BionanoIrys'}
+
+APPLICATION_SUBTYPE_REPLACEMENTS = {"Whole genome sequencing": "wholeGenomeSeq",
+                                    "Exome sequencing": "exomeSeq",
+                                    "Optical genome imaging": "wholeGenomeOpticalImaging"}
+
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
+
 
 def get_nda_s3_session(username, password):
     tokengenerator = nda_aws_token_generator.NDATokenGenerator()
@@ -60,6 +75,7 @@ def get_nda_s3_session(username, password):
     s3_nda = session.resource("s3")
 
     return s3_nda
+
 
 def get_samples(auth, guid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
@@ -109,6 +125,7 @@ def get_samples(auth, guid):
 
     return samples_final
 
+
 def process_samples(df):
     df['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
                              ['bam', 'fastq', 'bai'],
@@ -119,7 +136,7 @@ def process_samples(df):
 
     # Remove stuff that isn't part of s3 path
     df.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
-                             df.data_file.tolist())
+                       df.data_file.tolist())
 
     df = df[df.data_file != 'nan']
 
@@ -130,6 +147,7 @@ def process_samples(df):
     # df = df[SAMPLE_COLUMNS]
 
     return df
+
 
 def get_subjects(auth, guid):
     """Use the NDA API to get the `genomics_subject02` records for this GUID."""
@@ -147,11 +165,11 @@ def get_subjects(auth, guid):
 
     df = pandas.io.json.json_normalize(tmp)
 
-
     colnames_lower = map(lambda x: x.lower(), df.columns.tolist())
     df.columns = colnames_lower
 
     return df
+
 
 def process_subjects(df, exclude_genomics_subjects=[]):
     # For some reason there are different ids for this that aren't usable
@@ -172,6 +190,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
 
     return df
 
+
 def get_tissues(auth, guid):
     """Use the NDA api to get the `ncihd_btb02` records for this GUID."""
 
@@ -189,6 +208,7 @@ def get_tissues(auth, guid):
 
     return df
 
+
 def process_tissues(df):
     colnames_lower = map(lambda x: x.lower(), df.columns.tolist())
     df.columns = colnames_lower
@@ -204,17 +224,19 @@ def process_tissues(df):
 
     return df
 
-def flattenjson( b, delim ):
+
+def flattenjson(b, delim):
     val = {}
     for i in b.keys():
-        if isinstance( b[i], dict ):
-            get = flattenjson( b[i], delim )
+        if isinstance(b[i], dict):
+            get = flattenjson(b[i], delim)
             for j in get.keys():
-                val[ i + delim + j ] = get[j]
+                val[i + delim + j] = get[j]
         else:
             val[i] = b[i]
 
     return val
+
 
 def get_experiments(auth, experiment_ids, verbose=False):
     df = pandas.DataFrame()
@@ -231,8 +253,8 @@ def get_experiments(auth, experiment_ids, verbose=False):
         guid_data_flat = flattenjson(guid_data[u'omicsOrFMRIOrEEG']['sections'], '.')
 
         fix_keys = ['processing.processingKits.processingKit',
-                   'additionalinformation.equipment.equipmentName',
-                   'extraction.extractionKits.extractionKit',
+                    'additionalinformation.equipment.equipmentName',
+                    'extraction.extractionKits.extractionKit',
                     'additionalinformation.analysisSoftware.software']
 
         for key in fix_keys:
@@ -253,31 +275,23 @@ def get_experiments(auth, experiment_ids, verbose=False):
 
     return df
 
+
 def process_experiments(df):
     df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
     df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
     df2 = pandas.concat([df, df_change], axis=1)
-    df2 = df2.rename(columns = lambda x: x.replace(".", "_"))
-    df2['platform'] = df2['equipmentName'].replace({'Illumina HiSeq 2500,Illumina NextSeq 500': 'HiSeq2500,NextSeq500',
-                                                    'Illumina NextSeq 500,Illumina HiSeq 2500': 'HiSeq2500,NextSeq500',
-                                                    'Illumina HiSeq 4000,Illumina MiSeq': 'HiSeq4000,MiSeq',
-                                                    'Illumina MiSeq,Illumina HiSeq 4000': 'HiSeq4000,MiSeq',
-                                                    'Illumina NextSeq 500': 'NextSeq500',
-                                                    'Illumina HiSeq 2500': 'HiSeq2500',
-                                                    'Illumina HiSeq X Ten': 'HiSeqX',
-                                                    'Illumina HiSeq 4000': 'HiSeq4000',
-                                                    'Illumina MiSeq': 'MiSeq',
-                                                    'BioNano IrysView': 'BionanoIrys'},
+    df2 = df2.rename(columns=lambda x: x.replace(".", "_"))
+    df2['platform'] = df2['equipmentName'].replace(EQUIPMENT_NAME_REPLACEMENTS,
                                                   inplace=False)
 
-    df2['assay'] = df2['applicationSubType'].replace({"Whole genome sequencing": "wholeGenomeSeq",
-                                                      "Exome sequencing": "exomeSeq",
-                                                      "Optical genome imaging": "wholeGenomeOpticalImaging",
-                                                      }, inplace=False)
+    df2['assay'] = df2['applicationSubType'].replace(APPLICATION_SUBTYPE_REPLACEMENTS,
+                                                     inplace=False)
 
+    # Should be fixed at NDA
     df2['assay'][df2['experiment_id'].isin(['675', '777', '778'])] = "targetedSequencing"
 
     return df2
+
 
 def merge_tissues_subjects(tissues, subjects):
     """Merge together the tissue file and the subjects file.
@@ -299,6 +313,7 @@ def merge_tissues_subjects(tissues, subjects):
 
     return btb_subjects
 
+
 def merge_tissues_samples(btb_subjects, samples):
     """Merge the tissue/subject with the samples to make a complete metadata table."""
 
@@ -309,6 +324,7 @@ def merge_tissues_samples(btb_subjects, samples):
     metadata = metadata.drop_duplicates()
 
     return metadata
+
 
 def get_manifests(bucket):
     """Get list of `.manifest` files from the NDA-BSMN bucket.
@@ -339,6 +355,7 @@ def get_manifests(bucket):
 
     return manifest
 
+
 def merge_metadata_manifest(metadata, manifest):
     metadata_manifest = manifest.merge(metadata, how="left",
                                        left_on="filename",
@@ -347,3 +364,16 @@ def merge_metadata_manifest(metadata, manifest):
     metadata_manifest = metadata_manifest.drop_duplicates()
 
     return metadata_manifest
+
+
+def find_duplicate_filenames(metadata):
+    """Find duplicates based on the basename of the data_file column.
+
+    """
+    basenames = metadata.data_file.apply(lambda x: os.path.basename(x))
+    counts = basenames.value_counts()
+
+    duplicates = counts[counts > 1].index
+
+    return (metadata[~basenames.isin(duplicates)],
+            metadata[basenames.isin(duplicates)])
