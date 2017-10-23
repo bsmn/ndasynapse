@@ -1,12 +1,10 @@
 import os
 import json
+import uuid
 import logging
 
-import requests
 import pandas
-import boto3
 import synapseclient
-import nda_aws_token_generator
 
 pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
@@ -19,13 +17,12 @@ logger.setLevel(logging.DEBUG)
 # logger.addHandler(ch)
 
 # Synapse configuration
-import synapseclient
-
 dry_run = False
 
 content_type_dict = {'.gz': 'application/x-gzip',
                      '.bam': 'application/octet-stream',
                      '.zip': 'application/zip'}
+
 
 def check_existing_by_datasetid(syn, datasetids, file_view_id):
     """Check a file view that has a 'datasetid' column to see which datasetids exist.
@@ -41,14 +38,21 @@ def check_existing_by_datasetid(syn, datasetids, file_view_id):
     return {'exists': given_datasetids.intersection(existing_datasetids),
             'not_exists': given_datasetids.difference(existing_datasetids)}
 
-def create_synapse_filehandles(syn, metadata_manifest, bucket_name, storage_location_id, verbose=False):
+
+def create_synapse_filehandles(syn, metadata_manifest, bucket_name,
+                               storage_location_id, verbose=False):
     """Create a list of Synapse file handles (S3FileHandles) to link to."""
 
     fh_list = []
 
     for n, x in metadata_manifest.iterrows():
         s3Key = x['data_file'].replace("s3://%s/" % bucket_name, "")
-        s3FilePath = os.path.split(s3Key)[-1]
+
+        try:
+            s3FilePath = x['fileName']
+        except KeyError:
+            s3FilePath = os.path.split(s3Key)[-1]
+
         contentSize = x['size']
         contentMd5 = x['md5']
 
@@ -90,10 +94,12 @@ def create_synapse_filehandles(syn, metadata_manifest, bucket_name, storage_loca
 
     return fh_list
 
+
 def entity_by_md5(syn, contentMd5, parentId=None, cmp=None):
     """Gets the first entity in a list of entities identified by md5.
 
-    Optionally takes a comparison function to pass to sorted, and a parent id for filtering.
+    Optionally takes a comparison function to pass to sorted
+    and a parent id for filtering.
 
     """
 
@@ -113,7 +119,21 @@ def entity_by_md5(syn, contentMd5, parentId=None, cmp=None):
 
     return entity
 
-def store(syn, synapse_manifest, filehandles, dry_run=False, verbose=False):
+
+def get_namespace(syn, projectId):
+    return syn.getAnnotations(projectId)['namespace_uuid'][0]
+
+
+def uuid2slug(uuid):
+    return uuid.bytes.encode('base64').rstrip('=\n').replace('/', '_')
+
+
+def slug2uuid(slug):
+    my_slug = uuid.UUID(bytes=(slug + '==').replace('_', '/').decode('base64'))
+    return str(my_slug)
+
+
+def store(syn, synapse_manifest, filehandles, verbose=False):
 
     f_list = []
 
@@ -122,25 +142,22 @@ def store(syn, synapse_manifest, filehandles, dry_run=False, verbose=False):
         i, x = row
         a = x.to_dict()
 
-        if not dry_run:
+        if not file_handle.get('id'):
+            stored_file_handle = syn.restPOST('/externalFileHandle/s3',
+                                              json.dumps(file_handle),
+                                              endpoint=syn.fileHandleEndpoint)
+            a['dataFileHandleId'] = stored_file_handle['id']
+        else:
+            if file_handle['id'] != a['dataFileHandleId']:
+                raise ValueError("Not equal: %s != %s" % (file_handle['id'],
+                                                          a['dataFileHandleId']))
 
-            if not file_handle.get('id'):
-                stored_file_handle = syn.restPOST('/externalFileHandle/s3',
-                                                  json.dumps(file_handle),
-                                                  endpoint=syn.fileHandleEndpoint)
-                a['dataFileHandleId'] = stored_file_handle['id']
-            else:
-                stored_file_handle = file_handle
-                if stored_file_handle['id'] != a['dataFileHandleId']:
-                    raise ValueError("Not equal: %s != %s" % (stored_file_handle['id'],
-                                                              a['dataFileHandleId']))
+        f = synapseclient.File(**a)
+        f = syn.store(f, forceVersion=False)
 
-            f = synapseclient.File(**a)
-            f = syn.store(f, forceVersion=False)
+        if verbose:
+            logger.debug("Stored %s (%s) to parentId %s" % (row.name, f.id, row.parentId))
 
-            if verbose:
-                logger.debug("Stored %s (%s) to parentId %s" % (row.name, f.id, row.parentId))
-
-            f_list.append(f)
+        f_list.append(f)
 
     return f_list

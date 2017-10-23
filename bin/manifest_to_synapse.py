@@ -1,15 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-import os
-import json
 import logging
 
-import requests
 import pandas
-import boto3
 import synapseclient
-import nda_aws_token_generator
 import ndasynapse
 
 pandas.options.display.max_rows = None
@@ -23,6 +18,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 ch.setLevel(logging.DEBUG)
 logger.addHandler(ch)
+
 
 def main():
 
@@ -54,10 +50,15 @@ def main():
     synapse_manifest['dataFileHandleId'] = fh_ids
     synapse_manifest['path'] = None
 
-    fh_names = map(synapseclient.utils.guess_file_name,
-                   metadata_manifest.data_file.tolist())
+    try:
+        fh_names = metadata_manifest['fileName']
+    except KeyError:
+        logger.info("No column 'filename', using 'data_file' column.")
+        fh_names = map(synapseclient.utils.guess_file_name,
+                       metadata_manifest.data_file.tolist())
 
     synapse_manifest['name'] = fh_names
+
     synapse_manifest['parentId'] = args.synapse_data_folder
 
     if not args.dry_run:
@@ -65,12 +66,12 @@ def main():
 
         f_list = ndasynapse.synapse.store(syn=syn,
                                           synapse_manifest=synapse_manifest,
-                                          filehandles=fh_list,
-                                          dry_run=False)
+                                          filehandles=fh_list)
 
         sys.stderr.write("%s\n" % (f_list, ))
     else:
         synapse_manifest.to_csv("/dev/stdout", index=False, encoding='utf-8')
+
 
 if __name__ == "__main__":
     main()
