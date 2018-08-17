@@ -86,13 +86,74 @@ def create_synapse_filehandles(syn, metadata_manifest, bucket_name,
 
             logger.debug("Doesn't exist: %s - %s" % (s3Key, s3FilePath))
 
-            # fileHandle = syn.restPOST('/externalFileHandle/s3',
-            #                          json.dumps(fileHandle),
-            #                          endpoint=syn.fileHandleEndpoint)
-
         fh_list.append(fileHandle)
 
     return fh_list
+
+
+def get_filehandles_by_md5(syn, md5):
+    res = syn.restGET("/entity/md5/%s" % md5)
+
+    fhs = [syn.restGET("/entity/%(id)s/version/%(versionNumber)s/filehandles" % er) for er in res]
+
+    return fhs
+
+
+def create_filehandle(syn, md5, size, data_file, contentType, fileName,
+                      bucket_name, storage_location_id, verbose=False):
+    """Create a Synapse S3FileHandles to link to.
+
+    This is required because S3FileHandles are currently not idempotent.
+
+    https://sagebionetworks.jira.com/browse/PLFM-4753
+
+    """
+
+    fileHandle = None
+
+    # Check if it exists in Synapse
+    res = syn.restGET("/entity/md5/%s" % (md5, ))
+
+    if verbose:
+        logger.debug("Checked for md5 %s" % md5)
+
+    if res['totalNumberOfResults'] > 0:
+
+        entities = res['results']
+        fhs = [syn.restGET("/entity/%(id)s/version/%(versionNumber)s/filehandles" % er) for er in entities]
+
+        # only consider external file handles from this bucket
+        fhs = filter(lambda x: x['bucketName'] == bucket_name and x['concreteType'] == 'org.sagebionetworks.repo.model.file.S3FileHandle', fhs)
+
+        try:
+            fileHandleId = fhs[0]['list'][0]['id']
+            fileHandle = syn._getFileHandle(fileHandleId)
+            if verbose:
+                logger.debug("Found an existing filehandle %s" % fileHandleId)
+        except IndexError:
+            pass
+
+    if not fileHandle:
+        fileHandle = {'concreteType': 'org.sagebionetworks.repo.model.file.S3FileHandle',
+                      'contentSize': size,
+                      'contentType': contentType,
+                      'contentMd5': md5,
+                      'bucketName': bucket_name,
+                      'key': data_file.replace("s3://%s/" % bucket_name, ""),
+                      'storageLocationId': storage_location_id}
+
+        try:
+            s3FilePath = row['fileName']
+        except KeyError:
+            s3FilePath = os.path.split(s3Key)[-1]
+
+        contentType = content_type_dict.get(os.path.splitext(x['data_file'])[-1],
+                                            'application/octet-stream')
+
+
+        logger.debug("New filehandle for %s - %s" % (s3Key, s3FilePath))
+
+    return fileHandle
 
 
 def entity_by_md5(syn, contentMd5, parentId=None, cmp=None):

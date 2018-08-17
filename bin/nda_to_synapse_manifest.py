@@ -53,19 +53,12 @@ def main():
 
     args = parser.parse_args()
 
-    # # Credential configuration for NDA
-    s3 = boto3.resource("s3")
-    obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
-
-    config = json.loads(obj.get()['Body'].read())
-
-    ndaconfig = config['nda']
+    auth = ndasynapse.nda.authenticate()
+    logger.info(auth)
 
     # Synapse
     # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
     # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
-
-    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
 
     samples = ndasynapse.nda.get_samples(auth, guid=REFERENCE_GUID)
 
@@ -74,8 +67,8 @@ def main():
     samples = ndasynapse.nda.process_samples(samples)
 
     # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
-    change_grant_ids = ['741', '743', '744', '745', '746']
-    samples.loc[samples['experiment_id'].isin(change_grant_ids), 'site'] = 'U01MH106892'
+    # change_grant_ids = ['741', '743', '744', '745', '746']
+    # samples.loc[samples['experiment_id'].isin(change_grant_ids), 'site'] = 'U01MH106892'
     samples.loc[samples['site'] == 'Salk', 'site'] = 'U01MH106882'
 
     subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
@@ -118,7 +111,8 @@ def main():
     if bad.shape[0] > 0:
         syn = synapseclient.login(silent=True)
 
-        namespace = uuid.UUID(ndasynapse.synapse.get_namespace(syn, PROJECT_ID))
+        namespace = uuid.UUID(ndasynapse.synapse.get_namespace(syn,
+                                                               PROJECT_ID))
         bad_uuids = bad.data_file.apply(lambda x: uuid.uuid3(namespace,
                                                              x))
         bad_slugs = bad_uuids.apply(lambda x: ndasynapse.synapse.uuid2slug(x))

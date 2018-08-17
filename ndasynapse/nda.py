@@ -1,3 +1,7 @@
+"""Functions to interact with NIMH Data Archive API.
+
+"""
+
 import io
 import os
 import json
@@ -23,9 +27,10 @@ logger.setLevel(logging.DEBUG)
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                     'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
                     'subject_biorepository', 'sample_description', 'species', 'site', 'sex',
-                    'sample_amount', 'phenotype', 'comments_misc', 'sample_unit', 'fileFormat']
+                    'sample_amount', 'phenotype',
+                    'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original',
+SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
                   'src_subject_id', 'subjectkey']
@@ -63,6 +68,19 @@ APPLICATION_SUBTYPE_REPLACEMENTS = {"Whole genome sequencing": "wholeGenomeSeq",
 
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
 
+def authenticate():
+    # # Credential configuration for NDA
+    s3 = boto3.resource("s3")
+    obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
+
+    config = json.loads(obj.get()['Body'].read())
+    
+    ndaconfig = config['nda']
+    
+    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
+    
+    return auth
+                                    
 
 def get_nda_s3_session(username, password):
     tokengenerator = nda_aws_token_generator.NDATokenGenerator()
@@ -83,8 +101,13 @@ def get_samples(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    guid_data = json.loads(r.text)
+    logger.info(r)
 
+    try:
+        guid_data = json.loads(r.text)
+    except ValueError:
+        return pandas.DataFrame()
+    
     # Get data files from samples.
     tmp = []
 
