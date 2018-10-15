@@ -28,8 +28,6 @@ REFERENCE_GUID = 'NDAR_INVRT663MBL'
 
 # This is an old genomics subject
 EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
-# EXCLUDE_EXPERIMENTS = ('534', '535')
-EXCLUDE_EXPERIMENTS = ()
 
 NDA_BUCKET_NAME = 'nda-bsmn'
 
@@ -46,6 +44,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--guid", type=str, default=REFERENCE_GUID, help="GUID to search for. [default: %(default)s]")
     parser.add_argument("--get_experiments", action="store_true", default=False)
     parser.add_argument("--synapse_data_folder", nargs=1)
     parser.add_argument("--uuid_columns", type=str, default=None)
@@ -60,22 +59,20 @@ def main():
     # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
     # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
 
-    samples = ndasynapse.nda.get_samples(auth, guid=REFERENCE_GUID)
+    samples = ndasynapse.nda.get_samples(auth, guid=args.guid)
+    samples = ndasynapse.nda.get_sample_data_files(samples)
 
     # exclude some experiments
-    samples = samples[~samples.experiment_id.isin(EXCLUDE_EXPERIMENTS)]
     samples = ndasynapse.nda.process_samples(samples)
 
     # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
-    # change_grant_ids = ['741', '743', '744', '745', '746']
-    # samples.loc[samples['experiment_id'].isin(change_grant_ids), 'site'] = 'U01MH106892'
     samples.loc[samples['site'] == 'Salk', 'site'] = 'U01MH106882'
 
-    subjects = ndasynapse.nda.get_subjects(auth, REFERENCE_GUID)
+    subjects = ndasynapse.nda.get_subjects(auth, args.guid)
     subjects = ndasynapse.nda.process_subjects(subjects,
                                                EXCLUDE_GENOMICS_SUBJECTS)
 
-    btb = ndasynapse.nda.get_tissues(auth, REFERENCE_GUID)
+    btb = ndasynapse.nda.get_tissues(auth, args.guid)
     btb = ndasynapse.nda.process_tissues(btb)
 
     btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)
@@ -111,20 +108,25 @@ def main():
     if bad.shape[0] > 0:
         syn = synapseclient.login(silent=True)
 
-        namespace = uuid.UUID(ndasynapse.synapse.get_namespace(syn,
-                                                               PROJECT_ID))
-        bad_uuids = bad.data_file.apply(lambda x: uuid.uuid3(namespace,
-                                                             x))
-        bad_slugs = bad_uuids.apply(lambda x: ndasynapse.synapse.uuid2slug(x))
-        bad_slugs.name = 'slug'
-
-        bad_filename_info = pandas.concat([bad_slugs, bad['basename']], axis=1)
-        fileNameOverride = bad_filename_info.apply(lambda x: '_'.join(map(str, x)), axis=1)
-
-        bad['fileName'] = fileNameOverride
-        good['fileName'] = good['basename']
-
-        metadata = pandas.concat([good, bad])
+        try:
+            namespace = uuid.UUID(ndasynapse.synapse.get_namespace(syn,
+                                                                   PROJECT_ID))
+            
+            bad_uuids = bad.data_file.apply(lambda x: uuid.uuid3(namespace,
+                                                                 x))
+            bad_slugs = bad_uuids.apply(lambda x: ndasynapse.synapse.uuid2slug(x))
+            bad_slugs.name = 'slug'
+            
+            bad_filename_info = pandas.concat([bad_slugs, bad['basename']], axis=1)
+            fileNameOverride = bad_filename_info.apply(lambda x: '_'.join(map(str, x)), axis=1)
+            
+            bad['fileName'] = fileNameOverride
+            good['fileName'] = good['basename']
+            
+            metadata = pandas.concat([good, bad])
+        except KeyError:
+            logging.info("Couldn't get namespace. Not processing bad files")
+            metadata = good
     else:
         metadata = good
 
