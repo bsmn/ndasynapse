@@ -28,7 +28,6 @@ def main():
     parser.add_argument("--dry_run", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--storage_location_id", type=str)
-    parser.add_argument("--bucket_name", type=str)
     parser.add_argument("--synapse_data_folder", type=str)
     parser.add_argument("manifest_file", type=str)
 
@@ -37,12 +36,14 @@ def main():
     syn = synapseclient.Synapse(skip_checks=True)
     syn.login(silent=True)
 
+    # get existing storage location object
+    storage_location = syn.restGET("/storageLocation/%(storage_location_id)s" % dict(storage_location_id=args.storage_location_id))
+
     metadata_manifest = pandas.read_csv(args.manifest_file)
 
     fh_list = ndasynapse.synapse.create_synapse_filehandles(syn=syn,
                                                             metadata_manifest=metadata_manifest,
-                                                            bucket_name=args.bucket_name,
-                                                            storage_location_id=args.storage_location_id,
+                                                            storage_location=storage_location,
                                                             verbose=args.verbose)
     fh_ids = map(lambda x: x.get('id', None), fh_list)
 
