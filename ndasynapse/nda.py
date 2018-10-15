@@ -103,11 +103,11 @@ def get_samples(auth, guid):
 
     logger.info(r)
 
-    try:
-        guid_data = json.loads(r.text)
-    except ValueError:
-        return pandas.DataFrame()
-    
+    guid_data = json.loads(r.text)
+
+    return guid_data
+
+def get_sample_data_files(guid_data):
     # Get data files from samples.
     tmp = []
 
@@ -123,6 +123,10 @@ def get_samples(auth, guid):
     samples = pandas.io.json.json_normalize(tmp)
     samples['datasetId'] = map(lambda x: x['datasetId'], guid_data['age'][0]['dataStructureRow'])
 
+    return samples
+
+def process_samples(samples):
+
     colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
     samples.columns = colnames_lower
 
@@ -131,7 +135,8 @@ def get_samples(auth, guid):
     samples_final = pandas.DataFrame()
 
     for col in datafile_column_names:
-        samples_tmp = samples[SAMPLE_COLUMNS + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
+        sample_columns = [x for x in SAMPLE_COLUMNS if x in samples.columns]
+        samples_tmp = samples[sample_columns + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
 
         samples_tmp.rename(columns={col: 'data_file',
                                     '%s_type' % col: 'fileFormat',
@@ -145,31 +150,27 @@ def get_samples(auth, guid):
 
     logger.info("These datasets are missing a data file and will be dropped: %s" % (samples_final.datasetid[missing_data_file].drop_duplicates().tolist(),))
     samples_final = samples_final[~missing_data_file]
-
-    return samples_final
-
-
-def process_samples(df):
-    df['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
-                             ['bam', 'fastq', 'bai'],
-                             inplace=True)
+    
+    samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
+                                        ['bam', 'fastq', 'bai'],
+                                        inplace=True)
 
     # Remove initial slash to match what is in manifest file
-    df.data_file = df['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
+    samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
 
     # Remove stuff that isn't part of s3 path
-    df.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
-                       df.data_file.tolist())
+    samples_final.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
+                                  samples_final.data_file.tolist())
 
-    df = df[df.data_file != 'nan']
+    samples_final = samples_final[samples_final.data_file != 'nan']
 
-    df['species'] = df.organism.replace(['Homo Sapiens'], ['Human'])
+    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'], ['Human'])
 
     # df.drop(["organism"], axis=1, inplace=True)
 
     # df = df[SAMPLE_COLUMNS]
 
-    return df
+    return samples_final
 
 
 def get_subjects(auth, guid):
@@ -262,7 +263,7 @@ def flattenjson(b, delim):
 
 
 def get_experiments(auth, experiment_ids, verbose=False):
-    df = pandas.DataFrame()
+    df = []
 
     for experiment_id in experiment_ids:
 
@@ -272,34 +273,41 @@ def get_experiments(auth, experiment_ids, verbose=False):
         if verbose:
             logger.debug("Retrieved {}".format(url))
 
-        guid_data = json.loads(r.text)
-        guid_data_flat = flattenjson(guid_data[u'omicsOrFMRIOrEEG']['sections'], '.')
+        data = json.loads(r.text)
+        data_flat = flattenjson(data[u'omicsOrFMRIOrEEG']['sections'], '.')
+        data_flat['experiment_id'] = experiment_id
 
-        fix_keys = ['processing.processingKits.processingKit',
-                    'additionalinformation.equipment.equipmentName',
-                    'extraction.extractionKits.extractionKit',
-                    'additionalinformation.analysisSoftware.software']
+        df.append(data_flat)
 
-        for key in fix_keys:
-            foo = guid_data_flat[key]
-            tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
-            guid_data_flat[key] = tmp
-
-        foo = guid_data_flat['processing.processingProtocols.processingProtocol']
-        tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
-        guid_data_flat['processing.processingProtocols.processingProtocol'] = tmp
-
-        guid_data_flat['extraction.extractionProtocols.protocolName'] = ",".join(
-            guid_data_flat['extraction.extractionProtocols.protocolName'])
-
-        guid_data_flat['experiment_id'] = experiment_id
-
-        df = df.append(guid_data_flat, ignore_index=True)
 
     return df
 
 
-def process_experiments(df):
+def process_experiments(d):
+
+    fix_keys = ['processing.processingKits.processingKit',
+                'additionalinformation.equipment.equipmentName',
+                'extraction.extractionKits.extractionKit',
+                'additionalinformation.analysisSoftware.software']
+
+    df = pandas.DataFrame()
+
+    for experiment in d:
+    
+        for key in fix_keys:
+            foo = experiment[key]
+            tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
+            experiment[key] = tmp
+    
+        foo = experiment['processing.processingProtocols.processingProtocol']
+        tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
+        experiment['processing.processingProtocols.processingProtocol'] = tmp
+        
+        experiment['extraction.extractionProtocols.protocolName'] = ",".join(
+            experiment['extraction.extractionProtocols.protocolName'])
+    
+        df = df.append(experiment, ignore_index=True)
+    
     df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
     df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
     df2 = pandas.concat([df, df_change], axis=1)
