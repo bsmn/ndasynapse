@@ -6,6 +6,7 @@ import io
 import os
 import json
 import logging
+import sys
 
 import requests
 import pandas
@@ -18,6 +19,7 @@ pandas.options.display.max_colwidth = 1000
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
 # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -101,7 +103,7 @@ def get_samples(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.info(r)
+    logger.info("Request %s for GUID %s" % (r, guid))
 
     guid_data = json.loads(r.text)
 
@@ -179,6 +181,8 @@ def get_subjects(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
+    logger.info("Request %s for GUID %s" % (r, guid))
+
     subject_guid_data = json.loads(r.text)
 
     tmp = []
@@ -221,6 +225,8 @@ def get_tissues(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=nichd_btb02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
+    logger.info("Request %s for GUID %s" % (r, guid))
+    
     btb_guid_data = json.loads(r.text)
 
     tmp = []
@@ -265,6 +271,8 @@ def flattenjson(b, delim):
 def get_experiments(auth, experiment_ids, verbose=False):
     df = []
 
+    sys.stderr.write("Getting experiments\n")
+
     for experiment_id in experiment_ids:
 
         url = "https://ndar.nih.gov/api/experiment/{}".format(experiment_id)
@@ -292,6 +300,8 @@ def process_experiments(d):
 
     df = pandas.DataFrame()
 
+    sys.stderr.write("Processing experiments\n")
+
     for experiment in d:
     
         for key in fix_keys:
@@ -305,8 +315,12 @@ def process_experiments(d):
         
         experiment['extraction.extractionProtocols.protocolName'] = ",".join(
             experiment['extraction.extractionProtocols.protocolName'])
-    
-        df = df.append(experiment, ignore_index=True)
+
+        sys.stderr.write("Processed experiment %s\n" % (experiment, ))
+
+        expt_df = pandas.DataFrame(experiment, index=experiment.keys())
+        
+        df = df.append(expt_df, ignore_index=True)
     
     df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
     df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
