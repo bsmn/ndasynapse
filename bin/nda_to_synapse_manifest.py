@@ -44,7 +44,8 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
-    parser.add_argument("--guid", type=str, default=REFERENCE_GUID, help="GUID to search for. [default: %(default)s]")
+    parser.add_argument("--guids", type=str, default=REFERENCE_GUID, nargs="+",
+                        help="GUID to search for. [default: %(default)s]")
     parser.add_argument("--get_experiments", action="store_true", default=False)
     parser.add_argument("--synapse_data_folder", nargs=1)
     parser.add_argument("--uuid_columns", type=str, default=None)
@@ -59,45 +60,65 @@ def main():
     # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
     # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
 
-    samples = ndasynapse.nda.get_samples(auth, guid=args.guid)
-    samples = ndasynapse.nda.get_sample_data_files(samples)
+    samples = pandas.DataFrame()
+    subjects = pandas.DataFrame()
+    btb = pandas.DataFrame()
+    
+    for guid in args.guids:
+        samples_guid = ndasynapse.nda.get_samples(auth, guid=guid)
+        samples_guid = ndasynapse.nda.get_sample_data_files(samples_guid)
 
-    # exclude some experiments
-    samples = ndasynapse.nda.process_samples(samples)
+        logging.debug("Got samples for %s" % guid)
+        
+        # exclude some experiments
+        samples_guid = ndasynapse.nda.process_samples(samples_guid)
 
-    # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
-    samples.loc[samples['site'] == 'Salk', 'site'] = 'U01MH106882'
+        # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
+        try:
+            samples_guid.loc[samples_guid['site'] == 'Salk', 'site'] = 'U01MH106882'
+        except KeyError:
+            pass
+        
+        subjects_guid = ndasynapse.nda.get_subjects(auth, guid)
+        subjects_guid = ndasynapse.nda.process_subjects(subjects_guid,
+                                                        EXCLUDE_GENOMICS_SUBJECTS)
 
-    subjects = ndasynapse.nda.get_subjects(auth, args.guid)
-    subjects = ndasynapse.nda.process_subjects(subjects,
-                                               EXCLUDE_GENOMICS_SUBJECTS)
+        btb_guid = ndasynapse.nda.get_tissues(auth, guid)
+        btb_guid = ndasynapse.nda.process_tissues(btb_guid)
 
-    btb = ndasynapse.nda.get_tissues(auth, args.guid)
-    btb = ndasynapse.nda.process_tissues(btb)
+        samples = samples.append(samples_guid)
+        subjects = subjects.append(subjects_guid)
+        btb = btb.append(btb_guid)
 
-    btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)
-
+    btb_subjects = ndasynapse.nda.merge_tissues_subjects(btb, subjects)    
     metadata = ndasynapse.nda.merge_tissues_samples(btb_subjects, samples)
 
     if args.dataset_ids:
         metadata = metadata[metadata.datasetid.isin(args.dataset_ids)]
-        logger.info("Filtered for requested dataset IDs.")
+        logger.info("Filtered for requested dataset IDs, %s records remaining." % metadata.shape[0])
 
     if args.get_experiments:
         if args.verbose:
             logger.info("Getting experiments")
 
         experiment_ids = metadata.experiment_id.drop_duplicates().tolist()
-        expts = ndasynapse.nda.get_experiments(auth,
-                                               experiment_ids,
-                                               verbose=args.verbose)
+        logger.info("Experiments to get: %s" % (experiment_ids,))
 
-        expts = ndasynapse.nda.process_experiments(expts)
+        if experiment_ids:
+            expts = ndasynapse.nda.get_experiments(auth,
+                                                   experiment_ids,
+                                                   verbose=args.verbose)
 
-        metadata = metadata.merge(expts, how="left", left_on="experiment_id",
-                                  right_on="experiment_id")
-        logger.info("Retrieved experiments.")
+            expts = ndasynapse.nda.process_experiments(expts)
+            expts = expts.drop_duplicates()
 
+            logger.info("Experiments processed: %s" % (expts,))
+            metadata = metadata.merge(expts, how="left", left_on="experiment_id",
+                                      right_on="experiment_id")
+            logger.info("Retrieved experiments.")
+        else:
+            logger.info("No experiments retrieved")
+    
     # Look for duplicates based on base filename
     # We are putting all files into a single folder, so can't conflict on name
     # Decided to rename both the entity name and the downloadAs
