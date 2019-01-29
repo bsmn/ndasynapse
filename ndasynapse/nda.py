@@ -17,8 +17,9 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
@@ -70,12 +71,8 @@ APPLICATION_SUBTYPE_REPLACEMENTS = {"Whole genome sequencing": "wholeGenomeSeq",
 
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
 
-def authenticate():
+def authenticate(config):
     # # Credential configuration for NDA
-    s3 = boto3.resource("s3")
-    obj = s3.Object('kdaily-lambda-creds.sagebase.org', 'ndalogs_config.json')
-
-    config = json.loads(obj.get()['Body'].read())
     
     ndaconfig = config['nda']
     
@@ -103,11 +100,21 @@ def get_samples(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.info("Request %s for GUID %s" % (r, guid))
+    logger.debug("Request %s for GUID %s" % (r, guid))
 
     guid_data = json.loads(r.text)
 
     return guid_data
+
+def get_submissions(auth, collectionid):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
+    r = requests.get("https://ndar.nih.gov/api/submission/collectionId={}&usersOwnSubmissions=false".format(collectionid),
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for collection %s" % (r, collectionid))
+
+    return json.loads(r.text)
 
 def get_sample_data_files(guid_data):
     # Get data files from samples.
@@ -150,8 +157,11 @@ def process_samples(samples):
 
     missing_data_file = samples_final.data_file.isnull()
 
-    logger.info("These datasets are missing a data file and will be dropped: %s" % (samples_final.datasetid[missing_data_file].drop_duplicates().tolist(),))
-    samples_final = samples_final[~missing_data_file]
+    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist()
+
+    if missing_files:
+        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,))
+        samples_final = samples_final[~missing_data_file]
     
     samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
                                         ['bam', 'fastq', 'bai'],
@@ -181,7 +191,7 @@ def get_subjects(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.info("Request %s for GUID %s" % (r, guid))
+    logger.debug("Request %s for GUID %s" % (r, guid))
 
     subject_guid_data = json.loads(r.text)
 
@@ -225,7 +235,7 @@ def get_tissues(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=nichd_btb02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.info("Request %s for GUID %s" % (r, guid))
+    logger.debug("Request %s for GUID %s" % (r, guid))
     
     btb_guid_data = json.loads(r.text)
 
@@ -271,7 +281,7 @@ def flattenjson(b, delim):
 def get_experiments(auth, experiment_ids, verbose=False):
     df = []
 
-    sys.stderr.write("Getting experiments\n")
+    logger.info("Getting experiments.")
 
     for experiment_id in experiment_ids:
 
@@ -300,7 +310,7 @@ def process_experiments(d):
 
     df = pandas.DataFrame()
 
-    sys.stderr.write("Processing experiments\n")
+    logger.info("Processing experiments.")
 
     for experiment in d:
     
@@ -316,7 +326,7 @@ def process_experiments(d):
         experiment['extraction.extractionProtocols.protocolName'] = ",".join(
             experiment['extraction.extractionProtocols.protocolName'])
 
-        sys.stderr.write("Processed experiment %s\n" % (experiment, ))
+        logger.debug("Processed experiment %s\n" % (experiment, ))
 
         expt_df = pandas.DataFrame(experiment, index=experiment.keys())
         
