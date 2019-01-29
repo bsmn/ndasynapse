@@ -41,7 +41,8 @@ UUID_COLUMNS = ['sample_id_biorepository', 'sample_id_original',
 def main():
 
     import argparse
-
+    import json
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--guids", type=str, default=REFERENCE_GUID, nargs="+",
@@ -50,10 +51,12 @@ def main():
     parser.add_argument("--synapse_data_folder", nargs=1)
     parser.add_argument("--uuid_columns", type=str, default=None)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
+    parser.add_argument("--config", type=str, default=None)
 
     args = parser.parse_args()
 
-    auth = ndasynapse.nda.authenticate()
+    config = json.loads(args.config)
+    auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
 
     # Synapse
