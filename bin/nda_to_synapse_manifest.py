@@ -37,7 +37,6 @@ PROJECT_ID = 'syn5902559'
 UUID_COLUMNS = ['sample_id_biorepository', 'sample_id_original',
                 'experiment_id', 'datasetid']
 
-
 def main():
 
     import argparse
@@ -58,7 +57,7 @@ def main():
     config = json.loads(args.config)
     auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
-
+    
     # Synapse
     # Using the concatenated manifests as the master list of files to store, create file handles and entities in Synapse.
     # Use the metadata table to get the appropriate tissue/subject/sample annotations to set on each File entity.
