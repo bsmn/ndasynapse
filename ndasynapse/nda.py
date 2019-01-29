@@ -109,7 +109,7 @@ def get_samples(auth, guid):
 def get_submissions(auth, collectionid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
-    r = requests.get("https://ndar.nih.gov/api/submission/collectionId={}&usersOwnSubmissions=false".format(collectionid),
+    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for collection %s" % (r, collectionid))
