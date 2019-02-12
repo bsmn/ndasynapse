@@ -1,2 +1,2 @@
-import nda
-import synapse
+from . import nda
+from . import synapse
