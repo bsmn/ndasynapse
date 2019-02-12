@@ -10,6 +10,7 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 # ch = logging.StreamHandler()
@@ -136,7 +137,7 @@ def slug2uuid(slug):
     return str(my_slug)
 
 
-def store(syn, synapse_manifest, filehandles, verbose=False):
+def store(syn, synapse_manifest, filehandles, verbose=False, ignore_errors=False):
 
     f_list = []
 
@@ -146,14 +147,25 @@ def store(syn, synapse_manifest, filehandles, verbose=False):
         a = x.to_dict()
 
         if not file_handle.get('id'):
-            stored_file_handle = syn.restPOST('/externalFileHandle/s3',
-                                              json.dumps(file_handle),
-                                              endpoint=syn.fileHandleEndpoint)
-            a['dataFileHandleId'] = stored_file_handle['id']
+            try:
+                stored_file_handle = syn.restPOST('/externalFileHandle/s3',
+                                                  json.dumps(file_handle),
+                                                  endpoint=syn.fileHandleEndpoint)
+                a['dataFileHandleId'] = stored_file_handle['id']
+            except Exception as e:
+                logger.error("File handle: %s" % (file_handle,))
+                if ignore_errors:
+                    continue
+                else:
+                    raise e
         else:
             if file_handle['id'] != a['dataFileHandleId']:
-                raise ValueError("Not equal: %s != %s" % (file_handle['id'],
+                if ignore_errors:
+                    logger.error("Not equal: %s != %s" % (file_handle['id'],
                                                           a['dataFileHandleId']))
+                else:
+                    raise ValueError("Not equal: %s != %s" % (file_handle['id'],
+                                                              a['dataFileHandleId']))
 
         f = synapseclient.File(**a)
         f = syn.store(f, forceVersion=False)
