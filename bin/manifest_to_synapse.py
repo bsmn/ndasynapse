@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry_run", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--ignore_errors", action="store_true", default=False)
     parser.add_argument("--storage_location_id", type=str)
     parser.add_argument("--synapse_data_folder", type=str)
     parser.add_argument("manifest_file", type=str)
@@ -67,7 +68,7 @@ def main():
 
         f_list = ndasynapse.synapse.store(syn=syn,
                                           synapse_manifest=synapse_manifest,
-                                          filehandles=fh_list)
+                                          filehandles=fh_list, ignore_errors=args.ignore_errors)
 
         sys.stderr.write("%s\n" % (f_list, ))
     else:
