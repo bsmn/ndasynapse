@@ -16,5 +16,5 @@ setup(name='ndasynapse',
                         'requests>=2.18.1',
                         'nda-aws-token-generator>=1.1'],
       dependency_links=['https://github.com/kdaily/nda_aws_token_generator/tarball/master#egg=nda-aws-token-generator'],
-      scripts=['bin/nda_to_synapse_manifest.py', 'bin/manifest_to_synapse.py'],
+      scripts=['bin/nda_to_synapse_manifest.py', 'bin/manifest_to_synapse.py', 'bin/query-nda'],
       zip_safe=False)
