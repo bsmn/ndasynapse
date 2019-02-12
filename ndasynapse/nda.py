@@ -11,7 +11,6 @@ import sys
 import requests
 import pandas
 import boto3
-import nda_aws_token_generator
 
 pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
@@ -79,19 +78,6 @@ def authenticate(config):
     auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
     
     return auth
-                                    
-
-def get_nda_s3_session(username, password):
-    tokengenerator = nda_aws_token_generator.NDATokenGenerator()
-    mytoken = tokengenerator.generate_token(username, password)
-
-    session = boto3.Session(aws_access_key_id=mytoken.access_key,
-                            aws_secret_access_key=mytoken.secret_key,
-                            aws_session_token=mytoken.session)
-
-    s3_nda = session.resource("s3")
-
-    return s3_nda
 
 
 def get_samples(auth, guid):
