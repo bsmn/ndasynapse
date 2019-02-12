@@ -109,6 +109,32 @@ def get_samples(auth, guid):
 def get_submissions(auth, collectionid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
+    if isinstance(collectionid, (list,)):
+        collectionid = ",".join(collectionid)
+
+    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for collection %s" % (r, collectionid))
+
+    return json.loads(r.text)
+
+def process_submissions(submission_data):
+    """Process submissions from nested JSON to a data frame.
+    """
+
+    if not isinstance(submission_data, (list,)):
+        submission_data = [submission_data]
+    
+    submissions =  [dict(collectionid=x['collection']['id'], collectiontitle=x['collection']['title'],
+                         submission_id=x['submission_id'], submission_status=x['submission_status'],
+                         dataset_title=x['dataset_title']) for x in submission_data]
+
+    return pandas.DataFrame(submissions)
+
+def get_submission(auth, submissionid):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
     r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
                      auth=auth, headers={'Accept': 'application/json'})
 
@@ -432,3 +458,135 @@ def find_duplicate_filenames(metadata):
 
     return (metadata[~basenames.isin(duplicates)],
             metadata[basenames.isin(duplicates)])
+
+class NDASubmissionFiles:
+
+    ASSOCIATED_FILE = 'Submission Associated File'
+    DATA_FILE = 'Submission Data File'
+    MANIFEST_FILE = 'Submission Manifest File'
+    SUBMISSION_PACKAGE = 'Submission Data Package'
+    SUBMISSION_TICKET = 'Submission Ticket'
+    SUBMISSION_MEMENTO = 'Submission Memento'
+
+    def __init__(self, config, files):
+        self.config = config # ApplicationProperties().get_config
+        self.submission_api = self.config.get('submission.service.url')
+        self.auth = (self.config.get('username'),
+                     self.config.get('password'))
+        self.headers = {'Accept': 'application/json'}
+        (self.associated_files,
+         self.data_files,
+         self.manifest_file,
+         self.submission_package,
+         self.submission_ticket,
+         self.submission_memento) = self.get_nda_submission_file_types(files)
+        self.debug = True
+
+    def get_nda_submission_file_types(self, files):
+        associated_files = []
+        data_files = []
+        manifest_file = []
+        submission_package = []
+        submission_ticket = []
+        submission_memento = []
+
+        for file in files:
+            if file['file_type'] == self.ASSOCIATED_FILE:
+                associated_files.append({'name': file})
+            elif file['file_type'] == self.DATA_FILE:
+                data_files.append({'name': file,
+                                   'content': self.read_file(file)})
+            elif file['file_type'] == self.MANIFEST_FILE:
+                manifest_file.append({'name': file,
+                                      'content': self.read_file(file)})
+            elif file['file_type'] == self.SUBMISSION_PACKAGE:
+                submission_package.append(file)
+            elif file['file_type'] == self.SUBMISSION_TICKET:
+                submission_ticket.append({'name': file,
+                                          'content': self.read_file(file)})
+            elif file['file_type'] == self.SUBMISSION_MEMENTO:
+                submission_memento.append({'name': file,
+                                           'content': self.read_file(file)})
+
+        return (associated_files,
+                data_files,
+                manifest_file,
+                submission_package,
+                submission_ticket,
+                submission_memento)
+
+    def read_file(self, submission_file):
+        download_url = submission_file['_links']['download']['href']
+        request = requests.get(
+            download_url,
+            auth=self.auth
+        )
+        return request.content
+
+
+class NDASubmission:
+
+    def __init__(self, config, submission_id=None, collection_id=None):
+
+        self.config = config # ApplicationProperties().get_config
+        self.submission_api = self.config.get('submission.service.url')
+        self.auth = (self.config.get('username'),
+                     self.config.get('password'))
+        self.headers = {'Accept': 'application/json'}
+        self.collection_id = collection_id
+        if collection_id:
+            self.submissions = self.get_submissions_for_collection()
+        else:
+            self.submissions = [submission_id]
+
+        print(self.submissions)
+        
+        self.submission_files = self.get_submission_files()
+
+    def get_submissions_for_collection(self):
+
+        request = requests.get(
+            self.submission_api,
+            params={'collectionId': self.collection_id,
+                    'usersOwnSubmissions': False},
+            headers=self.headers,
+            auth=self.auth
+        )
+        try:
+            submissions = json.loads(request.text)
+            
+        except json.decoder.JSONDecodeError:
+            print('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
+            print('Request ({}) returned {}'.format(request.url, request.text))
+        return [s['submission_id'] for s in submissions]
+
+    def get_submission_files(self):
+        submission_files = []
+        for s in self.submissions:
+            request = requests.get(
+                self.submission_api + '/{}'.format(s),
+                headers=self.headers,
+                auth=self.auth
+            )
+            try:
+                collection_id = json.loads(request.text)['collection']['id']
+            except json.decoder.JSONDecodeError:
+                print('Error occurred retrieving submission {}'.format(s))
+                print('Request ({}) returned {}'.format(request.url, request.text))
+
+            files = []
+            request = requests.get(
+                self.submission_api + '/{}/files'.format(s),
+                headers=self.headers,
+                auth=self.auth
+            )
+            try:
+                files = json.loads(request.text)
+            except json.decoder.JSONDecodeError:
+                print('Error occurred retrieving files from submission {}'.format(s))
+                print('Request returned {}'.format(request.text))
+            submission_files.append({'files': NDASubmissionFiles(config, files),
+                                     'collection_id': collection_id,
+                                     'submission_id': s})
+        return submission_files
+
