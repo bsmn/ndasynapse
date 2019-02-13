@@ -525,8 +525,6 @@ class NDASubmission:
         else:
             self.submissions = [submission_id]
 
-        print(self.submissions)
-        
         self.submission_files = self.get_submission_files()
 
     def get_submissions_for_collection(self):
@@ -542,8 +540,8 @@ class NDASubmission:
             submissions = json.loads(request.text)
             
         except json.decoder.JSONDecodeError:
-            print('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
-            print('Request ({}) returned {}'.format(request.url, request.text))
+            logging.error('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
+            logging.error('Request ({}) returned {}'.format(request.url, request.text))
         return [s['submission_id'] for s in submissions]
 
     def get_submission_files(self):
@@ -557,8 +555,8 @@ class NDASubmission:
             try:
                 collection_id = json.loads(request.text)['collection']['id']
             except json.decoder.JSONDecodeError:
-                print('Error occurred retrieving submission {}'.format(s))
-                print('Request ({}) returned {}'.format(request.url, request.text))
+                logging.error('Error occurred retrieving submission {}'.format(s))
+                logging.error('Request ({}) returned {}'.format(request.url, request.text))
 
             files = []
             request = requests.get(
@@ -569,9 +567,9 @@ class NDASubmission:
             try:
                 files = json.loads(request.text)
             except json.decoder.JSONDecodeError:
-                print('Error occurred retrieving files from submission {}'.format(s))
-                print('Request returned {}'.format(request.text))
-            submission_files.append({'files': NDASubmissionFiles(config, files),
+                logging.error('Error occurred retrieving files from submission {}'.format(s))
+                logging.error('Request ({}) returned {}'.format(request.url, request.text))
+            submission_files.append({'files': NDASubmissionFiles(self.config, files),
                                      'collection_id': collection_id,
                                      'submission_id': s})
         return submission_files
