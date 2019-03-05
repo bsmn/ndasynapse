@@ -1,19 +1,25 @@
+"""Functions to interact with NIMH Data Archive API.
+
+"""
+
 import io
 import os
 import json
 import logging
+import sys
 
 import requests
 import pandas
 import boto3
-import nda_aws_token_generator
 
 pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
 # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -23,9 +29,10 @@ logger.setLevel(logging.DEBUG)
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_original',
                     'sample_id_biorepository', 'subject_sample_id_original', 'biorepository',
                     'subject_biorepository', 'sample_description', 'species', 'site', 'sex',
-                    'sample_amount', 'phenotype', 'comments_misc', 'sample_unit', 'fileFormat']
+                    'sample_amount', 'phenotype',
+                    'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original',
+SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
                   'src_subject_id', 'subjectkey']
@@ -63,18 +70,14 @@ APPLICATION_SUBTYPE_REPLACEMENTS = {"Whole genome sequencing": "wholeGenomeSeq",
 
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
 
-
-def get_nda_s3_session(username, password):
-    tokengenerator = nda_aws_token_generator.NDATokenGenerator()
-    mytoken = tokengenerator.generate_token(username, password)
-
-    session = boto3.Session(aws_access_key_id=mytoken.access_key,
-                            aws_secret_access_key=mytoken.secret_key,
-                            aws_session_token=mytoken.session)
-
-    s3_nda = session.resource("s3")
-
-    return s3_nda
+def authenticate(config):
+    # # Credential configuration for NDA
+    
+    ndaconfig = config['nda']
+    
+    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
+    
+    return auth
 
 
 def get_samples(auth, guid):
@@ -83,8 +86,49 @@ def get_samples(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
+    logger.debug("Request %s for GUID %s" % (r, guid))
+
     guid_data = json.loads(r.text)
 
+    return guid_data
+
+def get_submissions(auth, collectionid):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
+    if isinstance(collectionid, (list,)):
+        collectionid = ",".join(collectionid)
+
+    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for collection %s" % (r, collectionid))
+
+    return json.loads(r.text)
+
+def process_submissions(submission_data):
+    """Process submissions from nested JSON to a data frame.
+    """
+
+    if not isinstance(submission_data, (list,)):
+        submission_data = [submission_data]
+    
+    submissions =  [dict(collectionid=x['collection']['id'], collectiontitle=x['collection']['title'],
+                         submission_id=x['submission_id'], submission_status=x['submission_status'],
+                         dataset_title=x['dataset_title']) for x in submission_data]
+
+    return pandas.DataFrame(submissions)
+
+def get_submission(auth, submissionid):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
+    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for collection %s" % (r, collectionid))
+
+    return json.loads(r.text)
+
+def get_sample_data_files(guid_data):
     # Get data files from samples.
     tmp = []
 
@@ -100,6 +144,10 @@ def get_samples(auth, guid):
     samples = pandas.io.json.json_normalize(tmp)
     samples['datasetId'] = map(lambda x: x['datasetId'], guid_data['age'][0]['dataStructureRow'])
 
+    return samples
+
+def process_samples(samples):
+
     colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
     samples.columns = colnames_lower
 
@@ -108,7 +156,8 @@ def get_samples(auth, guid):
     samples_final = pandas.DataFrame()
 
     for col in datafile_column_names:
-        samples_tmp = samples[SAMPLE_COLUMNS + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
+        sample_columns = [x for x in SAMPLE_COLUMNS if x in samples.columns]
+        samples_tmp = samples[sample_columns + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
 
         samples_tmp.rename(columns={col: 'data_file',
                                     '%s_type' % col: 'fileFormat',
@@ -120,33 +169,32 @@ def get_samples(auth, guid):
 
     missing_data_file = samples_final.data_file.isnull()
 
-    logger.info("These datasets are missing a data file and will be dropped: %s" % (samples_final.datasetid[missing_data_file].drop_duplicates().tolist(),))
-    samples_final = samples_final[~missing_data_file]
+    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist()
 
-    return samples_final
-
-
-def process_samples(df):
-    df['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
-                             ['bam', 'fastq', 'bai'],
-                             inplace=True)
+    if missing_files:
+        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,))
+        samples_final = samples_final[~missing_data_file]
+    
+    samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
+                                        ['bam', 'fastq', 'bai'],
+                                        inplace=True)
 
     # Remove initial slash to match what is in manifest file
-    df.data_file = df['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
+    samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
 
     # Remove stuff that isn't part of s3 path
-    df.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
-                       df.data_file.tolist())
+    samples_final.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
+                                  samples_final.data_file.tolist())
 
-    df = df[df.data_file != 'nan']
+    samples_final = samples_final[samples_final.data_file != 'nan']
 
-    df['species'] = df.organism.replace(['Homo Sapiens'], ['Human'])
+    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'], ['Human'])
 
     # df.drop(["organism"], axis=1, inplace=True)
 
     # df = df[SAMPLE_COLUMNS]
 
-    return df
+    return samples_final
 
 
 def get_subjects(auth, guid):
@@ -154,6 +202,8 @@ def get_subjects(auth, guid):
 
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for GUID %s" % (r, guid))
 
     subject_guid_data = json.loads(r.text)
 
@@ -197,6 +247,8 @@ def get_tissues(auth, guid):
     r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=nichd_btb02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
+    logger.debug("Request %s for GUID %s" % (r, guid))
+    
     btb_guid_data = json.loads(r.text)
 
     tmp = []
@@ -239,7 +291,9 @@ def flattenjson(b, delim):
 
 
 def get_experiments(auth, experiment_ids, verbose=False):
-    df = pandas.DataFrame()
+    df = []
+
+    logger.info("Getting experiments.")
 
     for experiment_id in experiment_ids:
 
@@ -249,34 +303,47 @@ def get_experiments(auth, experiment_ids, verbose=False):
         if verbose:
             logger.debug("Retrieved {}".format(url))
 
-        guid_data = json.loads(r.text)
-        guid_data_flat = flattenjson(guid_data[u'omicsOrFMRIOrEEG']['sections'], '.')
+        data = json.loads(r.text)
+        data_flat = flattenjson(data[u'omicsOrFMRIOrEEG']['sections'], '.')
+        data_flat['experiment_id'] = experiment_id
 
-        fix_keys = ['processing.processingKits.processingKit',
-                    'additionalinformation.equipment.equipmentName',
-                    'extraction.extractionKits.extractionKit',
-                    'additionalinformation.analysisSoftware.software']
+        df.append(data_flat)
 
-        for key in fix_keys:
-            foo = guid_data_flat[key]
-            tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
-            guid_data_flat[key] = tmp
-
-        foo = guid_data_flat['processing.processingProtocols.processingProtocol']
-        tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
-        guid_data_flat['processing.processingProtocols.processingProtocol'] = tmp
-
-        guid_data_flat['extraction.extractionProtocols.protocolName'] = ",".join(
-            guid_data_flat['extraction.extractionProtocols.protocolName'])
-
-        guid_data_flat['experiment_id'] = experiment_id
-
-        df = df.append(guid_data_flat, ignore_index=True)
 
     return df
 
 
-def process_experiments(df):
+def process_experiments(d):
+
+    fix_keys = ['processing.processingKits.processingKit',
+                'additionalinformation.equipment.equipmentName',
+                'extraction.extractionKits.extractionKit',
+                'additionalinformation.analysisSoftware.software']
+
+    df = pandas.DataFrame()
+
+    logger.info("Processing experiments.")
+
+    for experiment in d:
+    
+        for key in fix_keys:
+            foo = experiment[key]
+            tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
+            experiment[key] = tmp
+    
+        foo = experiment['processing.processingProtocols.processingProtocol']
+        tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
+        experiment['processing.processingProtocols.processingProtocol'] = tmp
+        
+        experiment['extraction.extractionProtocols.protocolName'] = ",".join(
+            experiment['extraction.extractionProtocols.protocolName'])
+
+        logger.debug("Processed experiment %s\n" % (experiment, ))
+
+        expt_df = pandas.DataFrame(experiment, index=experiment.keys())
+        
+        df = df.append(expt_df, ignore_index=True)
+    
     df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
     df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
     df2 = pandas.concat([df, df_change], axis=1)
@@ -377,3 +444,133 @@ def find_duplicate_filenames(metadata):
 
     return (metadata[~basenames.isin(duplicates)],
             metadata[basenames.isin(duplicates)])
+
+class NDASubmissionFiles:
+
+    ASSOCIATED_FILE = 'Submission Associated File'
+    DATA_FILE = 'Submission Data File'
+    MANIFEST_FILE = 'Submission Manifest File'
+    SUBMISSION_PACKAGE = 'Submission Data Package'
+    SUBMISSION_TICKET = 'Submission Ticket'
+    SUBMISSION_MEMENTO = 'Submission Memento'
+
+    def __init__(self, config, files):
+        self.config = config # ApplicationProperties().get_config
+        self.submission_api = self.config.get('submission.service.url')
+        self.auth = (self.config.get('username'),
+                     self.config.get('password'))
+        self.headers = {'Accept': 'application/json'}
+        (self.associated_files,
+         self.data_files,
+         self.manifest_file,
+         self.submission_package,
+         self.submission_ticket,
+         self.submission_memento) = self.get_nda_submission_file_types(files)
+        self.debug = True
+
+    def get_nda_submission_file_types(self, files):
+        associated_files = []
+        data_files = []
+        manifest_file = []
+        submission_package = []
+        submission_ticket = []
+        submission_memento = []
+
+        for file in files:
+            if file['file_type'] == self.ASSOCIATED_FILE:
+                associated_files.append({'name': file})
+            elif file['file_type'] == self.DATA_FILE:
+                data_files.append({'name': file,
+                                   'content': self.read_file(file)})
+            elif file['file_type'] == self.MANIFEST_FILE:
+                manifest_file.append({'name': file,
+                                      'content': self.read_file(file)})
+            elif file['file_type'] == self.SUBMISSION_PACKAGE:
+                submission_package.append(file)
+            elif file['file_type'] == self.SUBMISSION_TICKET:
+                submission_ticket.append({'name': file,
+                                          'content': self.read_file(file)})
+            elif file['file_type'] == self.SUBMISSION_MEMENTO:
+                submission_memento.append({'name': file,
+                                           'content': self.read_file(file)})
+
+        return (associated_files,
+                data_files,
+                manifest_file,
+                submission_package,
+                submission_ticket,
+                submission_memento)
+
+    def read_file(self, submission_file):
+        download_url = submission_file['_links']['download']['href']
+        request = requests.get(
+            download_url,
+            auth=self.auth
+        )
+        return request.content
+
+
+class NDASubmission:
+
+    def __init__(self, config, submission_id=None, collection_id=None):
+
+        self.config = config # ApplicationProperties().get_config
+        self.submission_api = self.config.get('submission.service.url')
+        self.auth = (self.config.get('username'),
+                     self.config.get('password'))
+        self.headers = {'Accept': 'application/json'}
+        self.collection_id = collection_id
+        if collection_id:
+            self.submissions = self.get_submissions_for_collection()
+        else:
+            self.submissions = [submission_id]
+
+        self.submission_files = self.get_submission_files()
+
+    def get_submissions_for_collection(self):
+
+        request = requests.get(
+            self.submission_api,
+            params={'collectionId': self.collection_id,
+                    'usersOwnSubmissions': False},
+            headers=self.headers,
+            auth=self.auth
+        )
+        try:
+            submissions = json.loads(request.text)
+            
+        except json.decoder.JSONDecodeError:
+            logging.error('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
+            logging.error('Request ({}) returned {}'.format(request.url, request.text))
+        return [s['submission_id'] for s in submissions]
+
+    def get_submission_files(self):
+        submission_files = []
+        for s in self.submissions:
+            request = requests.get(
+                self.submission_api + '/{}'.format(s),
+                headers=self.headers,
+                auth=self.auth
+            )
+            try:
+                collection_id = json.loads(request.text)['collection']['id']
+            except json.decoder.JSONDecodeError:
+                logging.error('Error occurred retrieving submission {}'.format(s))
+                logging.error('Request ({}) returned {}'.format(request.url, request.text))
+
+            files = []
+            request = requests.get(
+                self.submission_api + '/{}/files'.format(s),
+                headers=self.headers,
+                auth=self.auth
+            )
+            try:
+                files = json.loads(request.text)
+            except json.decoder.JSONDecodeError:
+                logging.error('Error occurred retrieving files from submission {}'.format(s))
+                logging.error('Request ({}) returned {}'.format(request.url, request.text))
+            submission_files.append({'files': NDASubmissionFiles(self.config, files),
+                                     'collection_id': collection_id,
+                                     'submission_id': s})
+        return submission_files
+
