@@ -54,7 +54,7 @@ def main():
 
     args = parser.parse_args()
 
-    config = json.loads(args.config)
+    config = json.load(open(args.config))
     auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
     
