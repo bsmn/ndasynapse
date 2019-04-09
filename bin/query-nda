@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 def get_submissions(auth, args, config=None):
-    submissions = ndasynapse.nda.get_submissions(auth, collectionid=map(str, args.collection_id))
+    logger.debug("collectionids = {collection_id}".format(collection_id=args.collection_id))
+    submissions = ndasynapse.nda.get_submissions(auth, collectionid=[str(x) for x in args.collection_id])
     submissions_processed = ndasynapse.nda.process_submissions(submissions)
 
     submissions_processed.to_csv(sys.stdout, index=False)

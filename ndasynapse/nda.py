@@ -18,7 +18,7 @@ pandas.options.display.max_colwidth = 1000
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
@@ -88,9 +88,10 @@ def get_samples(auth, guid):
 
     logger.debug("Request %s for GUID %s" % (r, guid))
 
-    guid_data = json.loads(r.text)
+    if r.status_code != 200:
+        raise requests.HTTPError(r.json())
 
-    return guid_data
+    return r.json()
 
 def get_submissions(auth, collectionid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
@@ -101,9 +102,10 @@ def get_submissions(auth, collectionid):
     r = requests.get("https://nda.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug("Request %s for collection %s" % (r, collectionid))
+    logger.debug("Request %s for collection %s" % (r.url, collectionid))
 
     if r.status_code != 200:
+        logger.debug(r.status_code)
         raise requests.HTTPError(r.json())
 
     return r.json()
@@ -214,11 +216,13 @@ def get_subjects(auth, guid):
     if r.status_code != 200:
         raise requests.HTTPError(r.json())
     
-    subject_guid_data = r.json()
+    return r.json()
+
+def subjects_to_df(json_data):
 
     tmp = []
 
-    for row in subject_guid_data['age'][0]['dataStructureRow']:
+    for row in json_data['age'][0]['dataStructureRow']:
         foo = {col['name']: col['value'] for col in row['dataElement']}
         tmp.append(foo)
 
@@ -261,10 +265,12 @@ def get_tissues(auth, guid):
     if r.status_code != 200:
         raise requests.HTTPError(r.json())
     
-    btb_guid_data = r.json()
+    return r.json()
 
+def tissues_to_df(json_data):
     tmp = []
-    for row in btb_guid_data['age'][0]['dataStructureRow']:
+    
+    for row in json_data['age'][0]['dataStructureRow']:
         foo = {col['name']: col['value'] for col in row['dataElement']}
         tmp.append(foo)
 
