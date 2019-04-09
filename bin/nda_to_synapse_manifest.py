@@ -82,10 +82,12 @@ def main():
             pass
         
         subjects_guid = ndasynapse.nda.get_subjects(auth, guid)
+        subjects_guid = ndasynapse.nda.subjects_to_df(subjects_guid)
         subjects_guid = ndasynapse.nda.process_subjects(subjects_guid,
                                                         EXCLUDE_GENOMICS_SUBJECTS)
-
+        
         btb_guid = ndasynapse.nda.get_tissues(auth, guid)
+        btb_guid = ndasynapse.nda.tissues_to_df(btb_guid)
         btb_guid = ndasynapse.nda.process_tissues(btb_guid)
 
         samples = samples.append(samples_guid)
