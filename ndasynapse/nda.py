@@ -150,13 +150,13 @@ def get_sample_data_files(guid_data):
         tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
-    samples['datasetId'] = map(lambda x: x['datasetId'], guid_data['age'][0]['dataStructureRow'])
+    samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
 
     return samples
 
 def process_samples(samples):
 
-    colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
+    colnames_lower = [x.lower() for x in samples.columns.tolist()]
     samples.columns = colnames_lower
 
     datafile_column_names = samples.filter(regex="data_file\d+$").columns.tolist()
@@ -191,8 +191,7 @@ def process_samples(samples):
     samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
 
     # Remove stuff that isn't part of s3 path
-    samples_final.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
-                                  samples_final.data_file.tolist())
+    samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") for x in samples_final.data_file.tolist()]
 
     samples_final = samples_final[samples_final.data_file != 'nan']
 

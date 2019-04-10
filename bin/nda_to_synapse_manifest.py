@@ -126,7 +126,7 @@ def main():
     # Look for duplicates based on base filename
     # We are putting all files into a single folder, so can't conflict on name
     # Decided to rename both the entity name and the downloadAs
-    metadata.loc[:, 'basename'] = metadata.data_file.apply(lambda x: os.path.basename(x))
+    metadata['basename'] = metadata.data_file.apply(os.path.basename)
 
     (good, bad) = ndasynapse.nda.find_duplicate_filenames(metadata)
 
