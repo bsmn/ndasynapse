@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import logging
+import base64
 
 import pandas
 import synapseclient
@@ -129,13 +130,11 @@ def get_namespace(syn, projectId):
 
 
 def uuid2slug(uuid):
-    return uuid.bytes.encode('base64').rstrip('=\n').replace('/', '_')
+    return base64.urlsafe_b64encode(uuid.bytes).decode('utf-8').rstrip("=\n")
 
 
 def slug2uuid(slug):
-    my_slug = uuid.UUID(bytes=(slug + '==').replace('_', '/').decode('base64'))
-    return str(my_slug)
-
+    return uuid.UUID(bytes=base64.urlsafe_b64decode((slug + '==').replace('_', '/')))
 
 def store(syn, synapse_manifest, filehandles, verbose=False, ignore_errors=False):
 
