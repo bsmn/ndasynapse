@@ -1,7 +1,0 @@
-{
-  "nda": {"password": "yourpassword",
-          "username": "yourusername",
-          "submission.service.url": "https://nda.nih.gov/api/submission",
-          "guid.service.url": "https://nda.nih.gov/api/guid",
-          "experiment.service.url": "https://nda.nih.gov/api/experiment"}
-}
