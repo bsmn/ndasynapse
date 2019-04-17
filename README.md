@@ -10,12 +10,6 @@ See this [IPython Notebook](docs/NDA_Data_from_GUID_API.ipynb) for examples.
 pip install git+https://github.com/bsmn/ndasynapse.git
 ```
 
-## Docker
-
-```
-docker pull bsmn/ndasynapse
-```
-
 ## Usage
 
 The main tool to use is `query-nda`, which is installed as a command line tool when installing the package.
