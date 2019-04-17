@@ -11,6 +11,7 @@ import sys
 import requests
 import pandas
 import boto3
+from deprecated import deprecated
 
 pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
@@ -93,13 +94,14 @@ def get_samples(auth, guid):
 
     return r.json()
 
-def get_submissions(auth, collectionid):
+def get_submissions(auth, collectionid, users_own_submissions=False):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
     if isinstance(collectionid, (list,)):
         collectionid = ",".join(collectionid)
 
-    r = requests.get("https://nda.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+    r = requests.get("https://nda.nih.gov/api/submission",
+                     params={'usersOwnSubmissions': users_own_submissions},
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for collection %s" % (r.url, collectionid))
@@ -126,15 +128,38 @@ def process_submissions(submission_data):
 def get_submission(auth, submissionid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
-    r = requests.get("https://nda.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+    r = requests.get("https://nda.nih.gov/api/submission/{}".format(submissionid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug("Request %s for collection %s" % (r, collectionid))
+    logger.debug("Request %s for submission %s" % (r, submissionid))
 
     if r.status_code != 200:
-        raise requests.HTTPError(r.json())
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
 
     return r.json()
+
+def get_submission_files(auth, submissionid, submission_file_status="Complete", retrieve_files_to_upload=False):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
+    r = requests.get("https://nda.nih.gov/api/submission/{}/files".format(submissionid),
+                     params={'submissionFileStatus': submission_file_status,
+                             'retrieveFilesToUpload': retrieve_files_to_upload},
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for submission %s" % (r, submissionid))
+
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+
+    return r.json()
+
+def process_submission_files(submission_files):
+
+    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], file_remote_path=x['file_remote_path'],
+                                       status=x['status'], md5sum=x['md5sum'], size=x['size'],
+                                       created_date=x['created_date'], modified_date=x['modified_date']) for x in submission_files]
+
+    return pandas.DataFrame(submission_files_processed)
 
 def get_sample_data_files(guid_data):
     # Get data files from samples.
@@ -213,7 +238,7 @@ def get_subjects(auth, guid):
     logger.debug("Request %s for GUID %s" % (r, guid))
     
     if r.status_code != 200:
-        raise requests.HTTPError(r.json())
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
     
     return r.json()
 
@@ -256,13 +281,14 @@ def process_subjects(df, exclude_genomics_subjects=[]):
 def get_tissues(auth, guid):
     """Use the NDA api to get the `ncihd_btb02` records for this GUID."""
 
-    r = requests.get("https://nda.nih.gov/api/guid/{}/data?short_name=nichd_btb02".format(guid),
+    r = requests.get("https://nda.nih.gov/api/guid/{}/data".format(guid),
+                     params={"short_name": "nichd_btb02"},
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for GUID %s" % (r, guid))
 
     if r.status_code != 200:
-        raise requests.HTTPError(r.json())
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
     
     return r.json()
 
@@ -312,7 +338,7 @@ def get_experiment(auth, experiment_id, verbose=False):
     r = requests.get(url, auth=auth, headers={'Accept': 'application/json'})
 
     if r.status_code != 200:
-        raise requests.HTTPError(r.json())
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
     
     return r.json()
 
@@ -414,11 +440,13 @@ def merge_tissues_samples(btb_subjects, samples):
     return metadata
 
 
+@deprecated(reason="Should not depend on bucket location to get manifests. Use NDASubmissionFiles class.")
 def get_manifests(bucket):
     """Get list of `.manifest` files from the NDA-BSMN bucket.
 
     Read them in and concatenate them, under the assumption that the files listed
     in the manifest are in the same directory as the manifest file itself.
+
     """
 
     manifests = [x for x in bucket.objects.all() if x.key.find('.manifest') >=0]
