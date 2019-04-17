@@ -24,12 +24,6 @@ Authentication to NDA requires a JSON configuration file, that should look like 
 }
 ```
 
-## Docker
-
-```
-docker pull bsmn/ndasynapse
-```
-
 ## Usage
 
 The main tool to use is `query-nda`, which is installed as a command line tool when installing the package.

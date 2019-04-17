@@ -11,6 +11,7 @@ import sys
 import requests
 import pandas
 import boto3
+from deprecated import deprecated
 
 pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
@@ -18,7 +19,7 @@ pandas.options.display.max_colwidth = 1000
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
@@ -83,27 +84,33 @@ def authenticate(config):
 def get_samples(auth, guid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
-    r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
+    r = requests.get("https://nda.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for GUID %s" % (r, guid))
 
-    guid_data = json.loads(r.text)
+    if r.status_code != 200:
+        raise requests.HTTPError(r.json())
 
-    return guid_data
+    return r.json()
 
-def get_submissions(auth, collectionid):
+def get_submissions(auth, collectionid, users_own_submissions=False):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
     if isinstance(collectionid, (list,)):
         collectionid = ",".join(collectionid)
 
-    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+    r = requests.get("https://nda.nih.gov/api/submission",
+                     params={'usersOwnSubmissions': users_own_submissions},
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug("Request %s for collection %s" % (r, collectionid))
+    logger.debug("Request %s for collection %s" % (r.url, collectionid))
 
-    return json.loads(r.text)
+    if r.status_code != 200:
+        logger.debug(r.status_code)
+        raise requests.HTTPError(r.json())
+
+    return r.json()
 
 def process_submissions(submission_data):
     """Process submissions from nested JSON to a data frame.
@@ -121,12 +128,38 @@ def process_submissions(submission_data):
 def get_submission(auth, submissionid):
     """Use the NDA api to get the `genomics_sample03` records for a GUID."""
 
-    r = requests.get("https://ndar.nih.gov/api/submission/?collectionId={}&usersOwnSubmissions=false".format(collectionid),
+    r = requests.get("https://nda.nih.gov/api/submission/{}".format(submissionid),
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug("Request %s for collection %s" % (r, collectionid))
+    logger.debug("Request %s for submission %s" % (r, submissionid))
 
-    return json.loads(r.text)
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+
+    return r.json()
+
+def get_submission_files(auth, submissionid, submission_file_status="Complete", retrieve_files_to_upload=False):
+    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+
+    r = requests.get("https://nda.nih.gov/api/submission/{}/files".format(submissionid),
+                     params={'submissionFileStatus': submission_file_status,
+                             'retrieveFilesToUpload': retrieve_files_to_upload},
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for submission %s" % (r, submissionid))
+
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+
+    return r.json()
+
+def process_submission_files(submission_files):
+
+    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], file_remote_path=x['file_remote_path'],
+                                       status=x['status'], md5sum=x['md5sum'], size=x['size'],
+                                       created_date=x['created_date'], modified_date=x['modified_date']) for x in submission_files]
+
+    return pandas.DataFrame(submission_files_processed)
 
 def get_sample_data_files(guid_data):
     # Get data files from samples.
@@ -142,13 +175,13 @@ def get_sample_data_files(guid_data):
         tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
-    samples['datasetId'] = map(lambda x: x['datasetId'], guid_data['age'][0]['dataStructureRow'])
+    samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
 
     return samples
 
 def process_samples(samples):
 
-    colnames_lower = map(lambda x: x.lower(), samples.columns.tolist())
+    colnames_lower = [x.lower() for x in samples.columns.tolist()]
     samples.columns = colnames_lower
 
     datafile_column_names = samples.filter(regex="data_file\d+$").columns.tolist()
@@ -183,8 +216,7 @@ def process_samples(samples):
     samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
 
     # Remove stuff that isn't part of s3 path
-    samples_final.data_file = map(lambda x: str(x).replace("![CDATA[", "").replace("]]>", ""),
-                                  samples_final.data_file.tolist())
+    samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") for x in samples_final.data_file.tolist()]
 
     samples_final = samples_final[samples_final.data_file != 'nan']
 
@@ -200,16 +232,21 @@ def process_samples(samples):
 def get_subjects(auth, guid):
     """Use the NDA API to get the `genomics_subject02` records for this GUID."""
 
-    r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
+    r = requests.get("https://nda.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for GUID %s" % (r, guid))
+    
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+    
+    return r.json()
 
-    subject_guid_data = json.loads(r.text)
+def subjects_to_df(json_data):
 
     tmp = []
 
-    for row in subject_guid_data['age'][0]['dataStructureRow']:
+    for row in json_data['age'][0]['dataStructureRow']:
         foo = {col['name']: col['value'] for col in row['dataElement']}
         tmp.append(foo)
 
@@ -244,15 +281,21 @@ def process_subjects(df, exclude_genomics_subjects=[]):
 def get_tissues(auth, guid):
     """Use the NDA api to get the `ncihd_btb02` records for this GUID."""
 
-    r = requests.get("https://ndar.nih.gov/api/guid/{}/data?short_name=nichd_btb02".format(guid),
+    r = requests.get("https://nda.nih.gov/api/guid/{}/data".format(guid),
+                     params={"short_name": "nichd_btb02"},
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for GUID %s" % (r, guid))
-    
-    btb_guid_data = json.loads(r.text)
 
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+    
+    return r.json()
+
+def tissues_to_df(json_data):
     tmp = []
-    for row in btb_guid_data['age'][0]['dataStructureRow']:
+    
+    for row in json_data['age'][0]['dataStructureRow']:
         foo = {col['name']: col['value'] for col in row['dataElement']}
         tmp.append(foo)
 
@@ -289,6 +332,16 @@ def flattenjson(b, delim):
 
     return val
 
+def get_experiment(auth, experiment_id, verbose=False):
+
+    url = "https://nda.nih.gov/api/experiment/{}".format(experiment_id)
+    r = requests.get(url, auth=auth, headers={'Accept': 'application/json'})
+
+    if r.status_code != 200:
+        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
+    
+    return r.json()
+
 
 def get_experiments(auth, experiment_ids, verbose=False):
     df = []
@@ -297,13 +350,7 @@ def get_experiments(auth, experiment_ids, verbose=False):
 
     for experiment_id in experiment_ids:
 
-        url = "https://ndar.nih.gov/api/experiment/{}".format(experiment_id)
-        r = requests.get(url, auth=auth, headers={'Accept': 'application/json'})
-
-        if verbose:
-            logger.debug("Retrieved {}".format(url))
-
-        data = json.loads(r.text)
+        data = get_experiment(auth, experiment_id, verbose=verbose)
         data_flat = flattenjson(data[u'omicsOrFMRIOrEEG']['sections'], '.')
         data_flat['experiment_id'] = experiment_id
 
@@ -393,11 +440,13 @@ def merge_tissues_samples(btb_subjects, samples):
     return metadata
 
 
+@deprecated(reason="Should not depend on bucket location to get manifests. Use NDASubmissionFiles class.")
 def get_manifests(bucket):
     """Get list of `.manifest` files from the NDA-BSMN bucket.
 
     Read them in and concatenate them, under the assumption that the files listed
     in the manifest are in the same directory as the manifest file itself.
+
     """
 
     manifests = [x for x in bucket.objects.all() if x.key.find('.manifest') >=0]
@@ -527,12 +576,13 @@ class NDASubmission:
 
         self.submission_files = self.get_submission_files()
 
-    def get_submissions_for_collection(self):
+    def get_submissions_for_collection(self, status="Upload Completed"):
 
         request = requests.get(
             self.submission_api,
             params={'collectionId': self.collection_id,
-                    'usersOwnSubmissions': False},
+                    'usersOwnSubmissions': False,
+                    'status': status},
             headers=self.headers,
             auth=self.auth
         )
@@ -540,8 +590,8 @@ class NDASubmission:
             submissions = json.loads(request.text)
             
         except json.decoder.JSONDecodeError:
-            logging.error('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
-            logging.error('Request ({}) returned {}'.format(request.url, request.text))
+            logger.error('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
+            logger.error('Request ({}) returned {}'.format(request.url, request.text))
         return [s['submission_id'] for s in submissions]
 
     def get_submission_files(self):
@@ -552,11 +602,14 @@ class NDASubmission:
                 headers=self.headers,
                 auth=self.auth
             )
+
+            logger.debug(request.url)
+            
             try:
                 collection_id = json.loads(request.text)['collection']['id']
             except json.decoder.JSONDecodeError:
-                logging.error('Error occurred retrieving submission {}'.format(s))
-                logging.error('Request ({}) returned {}'.format(request.url, request.text))
+                logger.error('Error occurred retrieving submission {}'.format(s))
+                logger.error('Request ({}) returned {}'.format(request.url, request.text))
 
             files = []
             request = requests.get(
@@ -564,11 +617,14 @@ class NDASubmission:
                 headers=self.headers,
                 auth=self.auth
             )
+
+            logger.debug(request.url)
+
             try:
                 files = json.loads(request.text)
             except json.decoder.JSONDecodeError:
-                logging.error('Error occurred retrieving files from submission {}'.format(s))
-                logging.error('Request ({}) returned {}'.format(request.url, request.text))
+                logger.error('Error occurred retrieving files from submission {}'.format(s))
+                logger.error('Request ({}) returned {}'.format(request.url, request.text))
             submission_files.append({'files': NDASubmissionFiles(self.config, files),
                                      'collection_id': collection_id,
                                      'submission_id': s})
