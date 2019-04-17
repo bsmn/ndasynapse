@@ -10,6 +10,20 @@ See this [IPython Notebook](docs/NDA_Data_from_GUID_API.ipynb) for examples.
 pip install git+https://github.com/bsmn/ndasynapse.git
 ```
 
+## Configuration
+
+Authentication to NDA requires a JSON configuration file, that should look like this:
+
+```
+{
+  "nda": {"password": "yourpassword",
+          "username": "yourusername",
+          "submission.service.url": "https://nda.nih.gov/api/submission",
+          "guid.service.url": "https://nda.nih.gov/api/guid",
+          "experiment.service.url": "https://nda.nih.gov/api/experiment"}
+}
+```
+
 ## Usage
 
 The main tool to use is `query-nda`, which is installed as a command line tool when installing the package.
