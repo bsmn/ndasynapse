@@ -38,7 +38,7 @@ SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original', 'storage_p
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
                   'src_subject_id', 'subjectkey']
 
-SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'gender', 'race', 'phenotype',
+SUBJECT_COLUMNS = ['src_subject_id', 'subjectkey', 'sex', 'race', 'phenotype',
                    'subject_sample_id_original', 'sample_description', 'subject_biorepository',
                    'sex']
 
@@ -265,11 +265,12 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
     df.drop(["genomics_subject02_id"], axis=1, inplace=True)
 
-    df = df.assign(sex=df.gender.replace(['M', 'F'], ['male', 'female']),
-                   subject_sample_id_original=df.sample_id_original,
+    df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
+
+    df = df.assign(subject_sample_id_original=df.sample_id_original,
                    subject_biorepository=df.biorepository)
 
-    df.drop(["gender", "sample_id_original", "biorepository"], axis=1, inplace=True)
+    df.drop(["sample_id_original", "biorepository"], axis=1, inplace=True)
 
     df = df.drop_duplicates()
 
@@ -308,9 +309,7 @@ def process_tissues(df):
     colnames_lower = map(lambda x: x.lower(), df.columns.tolist())
     df.columns = colnames_lower
 
-    df = df.assign(sex=df.gender.replace(['M', 'F'], ['male', 'female']))
-
-    df.drop(["gender"], axis=1, inplace=True)
+    df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
 
     # This makes them non-unique, so drop them
     df.drop('nichd_btb02_id', axis=1, inplace=True)
