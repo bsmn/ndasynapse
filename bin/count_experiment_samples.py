@@ -63,7 +63,11 @@ def main():
         sample_df = pd.read_csv(sample_file_path, skiprows=[0])
 
     # Get only the records for the specified experiment ID
-    sample_exp_df = sample_df.loc[sample_df['experiment_id'] == args.experiment_id]
+    try:
+        sample_exp_df = sample_df.loc[sample_df['experiment_id'] == args.experiment_id]
+    except:
+        print(f"Error: There is no experiment_id column in {args.synapse_id}")
+        sys.exit(1)
 
     # Count the number of unique column values for the experiment and the total
     # number unique column values.
