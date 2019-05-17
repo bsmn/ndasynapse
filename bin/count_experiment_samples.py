@@ -15,7 +15,7 @@ Input parameters: Experiment ID
 Outputs: Terminal output
 
 Execution: count_experiment_samples.py experiment_id <experiment ID>
-               --synapse_id <Synapse ID> --column_name <column_name>
+               --synapse_id <Synapse ID> --column_name <column name>
 """
 
 import argparse
