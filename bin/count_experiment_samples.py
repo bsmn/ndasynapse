@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Program: count_experiment_samples.py
@@ -39,18 +39,12 @@ def main():
     args = parser.parse_args()
 
     samp_syn = synapseclient.Synapse()
-
-    try:
-        samp_syn.login(silent=True)
-    except Exception as syn_login_error:
-        print(f"Error: {syn_login_error}")
-        sys.exit(1)
+    samp_syn.login(silent=True)
 
     try:
         sample_file = samp_syn.get(args.synapse_id)
     except Exception as syn_id_error:
-        print(f"Error: {syn_id_error}")
-        sys.exit(1)
+        raise syn_id_error
 
     sample_file_path = sample_file.path
 
@@ -62,25 +56,20 @@ def main():
     else:
         sample_df = pd.read_csv(sample_file_path, skiprows=[0])
 
+    # Make sure that the required columns are in the dataframe.
+    if not ({'experiment_id', args.column_name}.issubset(sample_df.columns)):
+        raise Exception(f"experiment_id and/or {args.column_name} is not a column in {args.synapse_id}")
+
     # Get only the records for the specified experiment ID
-    try:
-        sample_exp_df = sample_df.loc[sample_df['experiment_id'] == args.experiment_id]
-    except:
-        print(f"Error: There is no experiment_id column in {args.synapse_id}")
-        sys.exit(1)
+    sample_exp_df = sample_df.loc[sample_df['experiment_id'] == args.experiment_id]
 
     # Count the number of unique column values for the experiment and the total
     # number unique column values.
-    try:
-        samp_count = sample_exp_df.groupby(args.column_name)[args.column_name].nunique()
-    except Exception as column_error:
-        print(f"Error: possible invalid column {column_error}")
-        sys.exit(1)
-
+    samp_count = sample_exp_df.groupby(args.column_name)[args.column_name].nunique()
     samp_total_count = sample_exp_df[args.column_name].nunique()
+    samp_total_series = samp_count.append(pd.Series({"Total": samp_total_count}))
 
-    print(samp_count)
-    print(f"Total number of unique {args.column_name} is {samp_total_count}")
+    samp_total_series.to_csv(sys.stdout, header=False)
 
 if __name__ == "__main__":
     main()
