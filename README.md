@@ -10,10 +10,18 @@ See this [IPython Notebook](docs/NDA_Data_from_GUID_API.ipynb) for examples.
 pip install git+https://github.com/bsmn/ndasynapse.git
 ```
 
-## Docker
+## Configuration
+
+Authentication to NDA requires a JSON configuration file, that should look like this:
 
 ```
-docker pull bsmn/ndasynapse
+{
+  "nda": {"password": "yourpassword",
+          "username": "yourusername",
+          "submission.service.url": "https://nda.nih.gov/api/submission",
+          "guid.service.url": "https://nda.nih.gov/api/guid",
+          "experiment.service.url": "https://nda.nih.gov/api/experiment"}
+}
 ```
 
 ## Usage

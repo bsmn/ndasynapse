@@ -54,7 +54,7 @@ def main():
 
     args = parser.parse_args()
 
-    config = json.loads(args.config)
+    config = json.load(open(args.config))
     auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
     
@@ -82,10 +82,12 @@ def main():
             pass
         
         subjects_guid = ndasynapse.nda.get_subjects(auth, guid)
+        subjects_guid = ndasynapse.nda.subjects_to_df(subjects_guid)
         subjects_guid = ndasynapse.nda.process_subjects(subjects_guid,
                                                         EXCLUDE_GENOMICS_SUBJECTS)
-
+        
         btb_guid = ndasynapse.nda.get_tissues(auth, guid)
+        btb_guid = ndasynapse.nda.tissues_to_df(btb_guid)
         btb_guid = ndasynapse.nda.process_tissues(btb_guid)
 
         samples = samples.append(samples_guid)
@@ -124,7 +126,7 @@ def main():
     # Look for duplicates based on base filename
     # We are putting all files into a single folder, so can't conflict on name
     # Decided to rename both the entity name and the downloadAs
-    metadata.loc[:, 'basename'] = metadata.data_file.apply(lambda x: os.path.basename(x))
+    metadata['basename'] = metadata.data_file.apply(os.path.basename)
 
     (good, bad) = ndasynapse.nda.find_duplicate_filenames(metadata)
 

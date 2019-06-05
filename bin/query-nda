@@ -21,15 +21,21 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 def get_submissions(auth, args, config=None):
-    submissions = ndasynapse.nda.get_submissions(auth, collectionid=map(str, args.collection_id))
+    logger.debug("collectionids = {collection_id}".format(collection_id=args.collection_id))
+    submissions = ndasynapse.nda.get_submissions(auth, collectionid=[str(x) for x in args.collection_id])
     submissions_processed = ndasynapse.nda.process_submissions(submissions)
 
     submissions_processed.to_csv(sys.stdout, index=False)
 
 def get_submission(auth, args, config=None):
     submission = ndasynapse.nda.get_submission(auth, submissionid=args.submission_id)
+    submissions_processed = ndasynapse.nda.process_submissions(submission)
+    submissions_processed.to_csv(sys.stdout, index=False)
 
-    sys.stdout.write(submission)
+def get_submission_files(auth, args, config=None):
+    submission = ndasynapse.nda.get_submission_files(auth, submissionid=args.submission_id)
+    submissions_processed = ndasynapse.nda.process_submission_files(submission)
+    submissions_processed.to_csv(sys.stdout, index=False)
 
 def get_experiments(auth, args, config=None):
     expts = ndasynapse.nda.get_experiments(auth,
@@ -89,8 +95,12 @@ def main():
     parser_get_submissions.set_defaults(func=get_submissions)
 
     parser_get_submission = subparsers.add_parser('get-submission', help='Get an NDA submission.')
-    parser_get_submission.add_argument('--submission_id', type=int, nargs="+", help='NDA submission ID.')
+    parser_get_submission.add_argument('--submission_id', type=int, help='NDA submission ID.')
     parser_get_submission.set_defaults(func=get_submission)
+
+    parser_get_submission_files = subparsers.add_parser('get-submission-files', help='Get files for an NDA submission.')
+    parser_get_submission_files.add_argument('--submission_id', type=int, help='NDA submission ID.')
+    parser_get_submission_files.set_defaults(func=get_submission_files)
 
     parser_get_collection_manifest = subparsers.add_parser('get-collection-manifests', help='Get an NDA submission.')
     parser_get_collection_manifest.add_argument('--collection_id', type=int, nargs="+", help='NDA collection ID.')
