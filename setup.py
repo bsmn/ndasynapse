@@ -14,6 +14,6 @@ setup(name='ndasynapse',
                         'boto3>=1.4.2',
                         'boto>=2.46.1',
                         'requests>=2.18.1',
-                        'deprecated>=1.2.4'],
+                        'deprecated==1.2.4'],
       scripts=['bin/nda_to_synapse_manifest.py', 'bin/manifest_to_synapse.py', 'bin/query-nda'],
       zip_safe=False)
