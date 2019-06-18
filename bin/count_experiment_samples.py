@@ -65,9 +65,9 @@ def main():
 
     # Count the number of unique column values for the experiment and the total
     # number unique column values.
-    samp_count = sample_exp_df.groupby(args.column_name)[args.column_name].nunique()
+    samp_count = sample_exp_df.groupby(args.column_name)[args.column_name].count()
     samp_total_count = sample_exp_df[args.column_name].nunique()
-    samp_total_series = samp_count.append(pd.Series({"Total": samp_total_count}))
+    samp_total_series = samp_count.append(pd.Series({"Total Unique": samp_total_count}))
 
     samp_total_series.to_csv(sys.stdout, header=False)
 
