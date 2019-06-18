@@ -14,7 +14,7 @@ Input parameters: Experiment ID
 
 Outputs: Terminal output
 
-Execution: count_experiment_samples.py experiment_id <experiment ID>
+Execution: count_experiment_samples.py <experiment ID>
                --synapse_id <Synapse ID> --column_name <column name>
 """
 
