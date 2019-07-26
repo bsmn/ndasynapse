@@ -105,7 +105,6 @@ def main():
                 data_file_as_string = data_file["content"].decode("utf-8")
                 if SUBJECT_MANIFEST in data_file_as_string:
                     manifest_df = pd.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    manifest_df["submission_id"] = submission["submission_id"]
                     for guid in manifest_df["subjectkey"].tolist():
                         guid_list.append(guid)
 
