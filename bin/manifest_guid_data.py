@@ -59,7 +59,7 @@ def main():
                         help="File containing NDA user credentials (full path)")
     parser.add_argument("manifest_type", type=str,
                         help="NDA manifest type (genomics_sample03, genomics_subject02, nichd_btb02")
-    parser.add_argument("out_file", type=argparse.FileType('a'), 
+    parser.add_argument("out_file", type=argparse.FileType('w'), 
                         help="Output .csv file (full path)")
     parser.add_argument("--synapse_id", type=str, default=COLLECTION_ID_LOCATION,
                         help="Synapse ID for the entity containing the collection ID")
@@ -69,11 +69,7 @@ def main():
     args = parser.parse_args()
 
     guid_list = list()
-    manifest_data = dict()
-
-    # Set a flag to indicate whether the output file has already been written to.
-    # If it has, do not write the headers to it again.
-    new_write = True
+    all_guids_df = pd.DataFrame()
 
     syn = synapseclient.Synapse()
     syn.login(silent=True)
@@ -109,6 +105,7 @@ def main():
                 data_file_as_string = data_file["content"].decode("utf-8")
                 if SUBJECT_MANIFEST in data_file_as_string:
                     manifest_df = pd.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                    manifest_df["submission_id"] = submission["submission_id"]
                     for guid in manifest_df["subjectkey"].tolist():
                         guid_list.append(guid)
 
@@ -124,21 +121,41 @@ def main():
 
         guid_data = json.loads(r.text)
         
+        # It is possible for there to be no data for the specified manifest type. If this
+        # is the case, the GUID API will return an OK status (status_code = 200) and an
+        # empty data structure, which will cause the code to crash further down, so check
+        # to make sure that the data structure is not empty before continuing.
+        if len(guid_data["age"]) == 0:
+            continue
+
         # The documentation for the data structure is here:
         # https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
         for ds_row in guid_data["age"][0]["dataStructureRow"]:
+            manifest_data = dict()
             for de_row in ds_row["dataElement"]:
                 manifest_data[de_row["name"]] = de_row["value"]
 
+            # Get the collection number and add it to the manifest_data.
+            for link_row in ds_row["links"]["link"]:
+                if link_row["rel"].lower() == "collection":
+                    manifest_data["collection_id"] = link_row["href"].split("=")[1]
+
             # Get the manifest data dictionary into a dataframe and flatten it out if necessary.
             manifest_flat_df = pd.io.json.json_normalize(manifest_data)
+            all_guids_df = pd.concat([all_guids_df, manifest_flat_df], axis=0, ignore_index=True, sort=False)
 
-            # Figure out whether the headers already exist in the file.
-            if new_write:
-                manifest_flat_df.to_csv(args.out_file)
-                new_write = False
-            else:
-                manifest_flat_df.to_csv(args.out_file, header=False)
+    # Get rid of any rows that are exact duplicates except for the manifest ID column
+    # (GENOMICS_SUBJECT02_ID, NICHD_BTB02_ID, GENOMICS_SAMPLE03_ID)
+    manifest_id = (args.manifest_type + "_id").upper()
+    all_guids_df.drop(manifest_id, axis=1, inplace=True)
+    column_list = (all_guids_df.columns).tolist()
+    pared_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
+
+    # Run the data through the list of BSMN collection IDs since it is possible for
+    # the samples to have been used in other consortia.
+    all_collections_df = pared_guids_df[pared_guids_df["collection_id"].isin(collection_id_list)]
+    
+    all_collections_df.to_csv(args.out_file, index=False)
 
     args.out_file.close()
 
