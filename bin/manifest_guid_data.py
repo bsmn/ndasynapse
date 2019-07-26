@@ -39,7 +39,6 @@ import pandas as pd
 import requests
 import synapseclient
 import sys
-from NDATools import TokenGenerator
 sys.path.insert(0, "/home/cmolitor/bsmn_validation/develop_ndasynapse")
 import ndasynapse
 
