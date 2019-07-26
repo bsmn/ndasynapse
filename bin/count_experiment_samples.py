@@ -16,6 +16,7 @@ Outputs: Terminal output
 
 Execution: count_experiment_samples.py <experiment ID>
                --synapse_id <Synapse ID> --column_name <column name>
+               --template_version_exists
 """
 
 import argparse
