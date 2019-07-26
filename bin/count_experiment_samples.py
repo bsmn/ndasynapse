@@ -35,6 +35,8 @@ def main():
                         help="Synapse ID for the sample file")
     parser.add_argument("--column_name", type=str, default="sample_id_original",
                         help="Column to be counted")
+    parser.add_argument("--template_version_exists", action="store_true",
+                        help="Is the first row the template and version?")
 
     args = parser.parse_args()
 
@@ -48,16 +50,19 @@ def main():
 
     sample_file_path = sample_file.path
 
-    # The master sample file does not have the template name and version on the
-    # first line. If the sample file being checked is not the master sample
-    # file, skip the first row.
-    if args.synapse_id == MASTER_SAMPLE_SYN_ID:
-        sample_df = pd.read_csv(sample_file_path)
-    else:
+    # If the first line of the file is the template name and version,
+    # skip the first row.
+    if args.template_version_exists:
         sample_df = pd.read_csv(sample_file_path, skiprows=[0])
+    else:
+        sample_df = pd.read_csv(sample_file_path)
+
+    # Change the column labels and the input column label to lower case.
+    sample_df.columns = sample_df.columns.str.lower()
+    column_name = args.column_name.lower()
 
     # Make sure that the required columns are in the dataframe.
-    if not ({'experiment_id', args.column_name}.issubset(sample_df.columns)):
+    if not ({'experiment_id', column_name}.issubset(sample_df.columns)):
         raise Exception(f"experiment_id and/or {args.column_name} is not a column in {args.synapse_id}")
 
     # Get only the records for the specified experiment ID
@@ -65,8 +70,8 @@ def main():
 
     # Count the number of unique column values for the experiment and the total
     # number unique column values.
-    samp_count = sample_exp_df.groupby(args.column_name)[args.column_name].count()
-    samp_total_count = sample_exp_df[args.column_name].nunique()
+    samp_count = sample_exp_df.groupby(column_name)[column_name].count()
+    samp_total_count = sample_exp_df[column_name].nunique()
     samp_total_series = samp_count.append(pd.Series({"Total Unique": samp_total_count}))
 
     samp_total_series.to_csv(sys.stdout, header=False)
