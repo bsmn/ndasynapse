@@ -11,9 +11,7 @@ Input parameters: Input file
 
 Outputs: stdout
 
-Execution: manifest_guid_data.py <NDA credentials file> 
-               <NDA manifest type> <output file>
-               --synapse_id <Synapse ID> --column_name <column name>
+Execution: count_guid_experiment_files.py <GUID sample file> <experiment ID>
 """
 
 import argparse
