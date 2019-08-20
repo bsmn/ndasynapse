@@ -83,7 +83,7 @@ def main():
 
     # The link to the NDA collection will have a format similar to
     # https://ndar.nih.gov/edit_collection.html?id=<NDA collection ID>
-    collection_id_list = (table_results_df[args.column_name].str.split("=", n=1).str[1]).tolist()
+    collection_id_list = table_results_df[args.column_name].tolist()
     logger.debug(collection_id_list)
 
     for coll_id in collection_id_list:
