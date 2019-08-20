@@ -45,7 +45,7 @@ logger.setLevel(logging.DEBUG)
 
 # Synapse ID of the Grant Data Summaries table
 COLLECTION_ID_LOCATION = "syn10802969"
-COLLECTION_ID_COLUMN = "nda collection"
+COLLECTION_ID_COLUMN = "nda_collection_id"
 
 SUBJECT_MANIFEST = "genomics_subject"
 
