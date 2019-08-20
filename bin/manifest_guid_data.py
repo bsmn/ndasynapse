@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 
-"""
-Program: manifest_guid_data.py
-
-Purpose: Get the GUIDs for completed submissions for each BSMN NDA collection
-         and create an appropriate summary data file for each manifest type.
+"""Get the GUIDs for completed submissions for each BSMN NDA collection and create an appropriate summary data file for each manifest type.
 
 Input parameters: File containing the user's NDA credentials (full path)
                   NDA manifest type (genomics_subject, genomics_sample,
@@ -26,9 +22,10 @@ Notes: - This script expects the user to have login credentials for Synapse.
          one. We therefore have to query the database by GUID instead in order
          to get to the accurate information.
 
-Execution: manifest_guid_data.py <NDA credentials file> 
-               <NDA manifest type> <output file>
+Execution: manifest_guid_data.py --config <NDA credentials file> 
                --synapse_id <Synapse ID> --column_name <column name>
+               --manifest_type <NDA manifest type>
+
 """
 
 import argparse
