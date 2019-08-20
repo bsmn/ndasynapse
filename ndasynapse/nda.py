@@ -107,7 +107,7 @@ def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
     if r.ok:
         return r.json()
     else:
-        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
         return None
 
 
@@ -170,11 +170,11 @@ def get_submission(auth, submissionid: int) -> dict:
     if r.ok:
         return r.json()
     else:
-        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
         return None
 
 
-def get_submissions(auth, collectionid, users_own_submissions=False):
+def get_submissions(auth, collectionid, status="Upload Completed", users_own_submissions=False):
     """Use the NDA Submission API to get submissions from a NDA collection.
     
     This is a separate service to get submission in batch that are related to a collection or a user.
@@ -182,8 +182,9 @@ def get_submissions(auth, collectionid, users_own_submissions=False):
 
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
-        collectionid: An NDA collection ID or a list of NDA collection IDs. If null, gets all submissions.
-        users_own_submissions: Return only user's own submissions. If false, must pass collection ID(s).
+        collectionid: An NDA collection ID or a list of NDA collection IDs. If None, gets all submissions.
+        status: Status of submissions to retrieve. If None, gets all submissions.
+        users_own_submissions: Return only user's own submissions. If False, must pass collection ID(s).
     Returns:
         dict from JSON format.
         
@@ -202,7 +203,7 @@ def get_submissions(auth, collectionid, users_own_submissions=False):
     if r.ok:
         return r.json()
     else:
-        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
         return None
 
 
@@ -229,11 +230,40 @@ def get_submission_files(auth, submissionid:int, submission_file_status:str="Com
     if r.ok:
         return r.json()
     else:
-        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
+        return None
+
+
+def get_experiment(auth, experimentid: int, verbose=False) -> dict:
+    """Use the NDA Experiment API to get an experiment.
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        experimentid: An NDA collection ID or a list of NDA collection IDs. If None, gets all submissions.
+    Returns:
+        dict from JSON format.
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/experiment/{experimentid}",
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug(f"Request {r.url} for experiment {experimentid}")
+
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
         return None
 
 def process_submissions(submission_data):
-    """Process submissions from nested JSON to a data frame.
+    """Process NDA submissions from a dictionary of data from the NDA Submission API.
+    
+    The specific NDA API is the root submission endpoint that gets submissions from specific
+    collections.
+
+    Args:
+        submission_data: Dictionary of data from NDA Submission API, or from ndasynapse.nda.get_submissions
+    Returns:
+        Pandas data frame with submission information.
     """
 
     if not isinstance(submission_data, (list,)):
@@ -277,7 +307,7 @@ def process_samples(samples):
     colnames_lower = [x.lower() for x in samples.columns.tolist()]
     samples.columns = colnames_lower
 
-    datafile_column_names = samples.filter(regex="data_file\d+$").columns.tolist()
+    datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist()
 
     samples_final = pandas.DataFrame()
 
@@ -320,7 +350,6 @@ def process_samples(samples):
     # df = df[SAMPLE_COLUMNS]
 
     return samples_final
-
 
 
 def subjects_to_df(json_data):
@@ -399,15 +428,6 @@ def flattenjson(b, delim):
 
     return val
 
-def get_experiment(auth, experiment_id, verbose=False):
-
-    url = "https://nda.nih.gov/api/experiment/{}".format(experiment_id)
-    r = requests.get(url, auth=auth, headers={'Accept': 'application/json'})
-
-    if r.status_code != 200:
-        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
-    
-    return r.json()
 
 
 def get_experiments(auth, experiment_ids, verbose=False):
@@ -572,10 +592,10 @@ class NDASubmissionFiles:
 
     def __init__(self, config, files):
         self.config = config # ApplicationProperties().get_config
-        self.submission_api = self.config.get('submission.service.url')
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
         self.headers = {'Accept': 'application/json'}
+
         (self.associated_files,
          self.data_files,
          self.manifest_file,
@@ -639,64 +659,25 @@ class NDASubmission:
         self.headers = {'Accept': 'application/json'}
         self.collection_id = collection_id
         if collection_id:
-            self.submissions = self.get_submissions_for_collection()
+            self.submissions = get_submissions(auth=self.auth, 
+                                               collectionid = self.collection_id)
         else:
-            self.submissions = [submission_id]
+            self.submissions = [get_submission(auth=self.auth, submissionid=submission_id)]
 
         self.submission_files = self.get_submission_files()
 
-    def get_submissions_for_collection(self, status="Upload Completed"):
-
-        request = requests.get(
-            self.submission_api,
-            params={'collectionId': self.collection_id,
-                    'usersOwnSubmissions': False,
-                    'status': status},
-            headers=self.headers,
-            auth=self.auth
-        )
-        try:
-            submissions = json.loads(request.text)
-            
-        except json.decoder.JSONDecodeError:
-            logger.error('Error occurred retrieving submissions from collection {}'.format(self.collection_id))
-            logger.error('Request ({}) returned {}'.format(request.url, request.text))
-        return [s['submission_id'] for s in submissions]
 
     def get_submission_files(self):
         submission_files = []
-        for s in self.submissions:
-            request = requests.get(
-                self.submission_api + '/{}'.format(s),
-                headers=self.headers,
-                auth=self.auth
-            )
+        for submission in self.submissions:
+            submission_id = submission['submission_id']            
+            collection_id = submission['collection']['id']
 
-            logger.debug(request.url)
-            
-            try:
-                collection_id = json.loads(request.text)['collection']['id']
-            except json.decoder.JSONDecodeError:
-                logger.error('Error occurred retrieving submission {}'.format(s))
-                logger.error('Request ({}) returned {}'.format(request.url, request.text))
+            files = get_submission_files(auth=self.auth, submissionid=submission_id)
 
-            files = []
-            request = requests.get(
-                self.submission_api + '/{}/files'.format(s),
-                headers=self.headers,
-                auth=self.auth
-            )
-
-            logger.debug(request.url)
-
-            try:
-                files = json.loads(request.text)
-            except json.decoder.JSONDecodeError:
-                logger.error('Error occurred retrieving files from submission {}'.format(s))
-                logger.error('Request ({}) returned {}'.format(request.url, request.text))
             submission_files.append({'files': NDASubmissionFiles(self.config, files),
                                      'collection_id': collection_id,
-                                     'submission_id': s})
+                                     'submission_id': submission_id})
         return submission_files
 
     def get_guids(self):
