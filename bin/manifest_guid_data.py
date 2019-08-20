@@ -61,8 +61,9 @@ def main():
                         help="Synapse ID for the entity containing the collection ID")
     parser.add_argument("--column_name", type=str, default=COLLECTION_ID_COLUMN,
                         help="Column containing the collection ID")
-    parser.add_argument("manifest_type", type=str,
-                        help="NDA manifest type (genomics_sample03, genomics_subject02, nichd_btb02")
+    parser.add_argument("--manifest_type", type=str,
+                        choices=["genomics_sample03", "genomics_subject02", "nichd_btb02"]
+                        help="NDA manifest type.")
 
     args = parser.parse_args()
 
