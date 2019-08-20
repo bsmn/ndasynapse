@@ -72,7 +72,14 @@ APPLICATION_SUBTYPE_REPLACEMENTS = {"Whole genome sequencing": "wholeGenomeSeq",
 MANIFEST_COLUMNS = ['filename', 'md5', 'size']
 
 def authenticate(config):
-    # # Credential configuration for NDA
+    """Authenticate to NDA.
+
+    Args:
+        config: A dict with 'username' and 'password' keys for NDA login.
+    Returns:
+        A requests.auth.HTTPBasicAuth object.
+
+    """
     
     ndaconfig = config['nda']
     
@@ -81,21 +88,109 @@ def authenticate(config):
     return auth
 
 
-def get_samples(auth, guid):
-    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
+    """Get data from the GUID API.
 
-    r = requests.get("https://nda.nih.gov/api/guid/{}/data?short_name=genomics_sample03".format(guid),
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        subjectkey: An NDA GUID (Globally Unique Identifier)
+        short_name: The data structure to return data for (e.g., genomics_sample03)
+    Returns:
+        dict from JSON format.
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}",
                      auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug("Request %s for GUID %s" % (r, guid))
+    logger.debug(f"Request {r} for GUID {subjectkey}")
 
-    if r.status_code != 200:
-        raise requests.HTTPError(r.json())
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        return None
 
-    return r.json()
+
+def get_samples(auth, guid: str) -> dict:
+    """Use the NDA api to get the `genomics_sample03` records for a GUID.
+    
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        guid: An NDA GUID (Globally Unique Identifier)
+    Returns:
+        dict from JSON format.
+    """
+
+    return get_guid_data(auth=auth, subjectkey=guid, short_name="genomics_sample03")
+
+
+def get_subjects(auth, guid):
+    """Use the NDA API to get the `genomics_subject02` records for a GUID.
+    
+        Args:
+            auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+            guid: An NDA GUID (also called the subjectkey).
+        Returns:
+            Data in JSON format.
+    """
+
+    return get_guid_data(auth=auth, subjectkey=guid, short_name="genomics_subject02")
+
+def get_tissues(auth, guid):
+    """Use the NDA GUID API to get the `ncihd_btb02` records for a GUID.
+
+    These records are the brain and tissue bank information.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        guid: An NDA GUID (also called the subjectkey).
+    Returns:
+        Data in JSON format.
+    
+    """
+
+    return get_guid_data(auth=auth, subjectkey=guid, short_name="nichd_btb02")
+
+
+def get_submission(auth, submissionid: int) -> dict:
+    """Use the NDA Submission API to get a submission.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        guid: An NDA submission ID.
+    Returns:
+        dict from JSON format.
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}",
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug("Request %s for submission %s" % (r, submissionid))
+
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        return None
+
 
 def get_submissions(auth, collectionid, users_own_submissions=False):
-    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
+    """Use the NDA Submission API to get submissions from a NDA collection.
+    
+    This is a separate service to get submission in batch that are related to a collection or a user.
+    See `get_submission` to get a single submission by submission ID.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        collectionid: An NDA collection ID or a list of NDA collection IDs. If null, gets all submissions.
+        users_own_submissions: Return only user's own submissions. If false, must pass collection ID(s).
+    Returns:
+        dict from JSON format.
+        
+    """
+
+    if isinstance(collectionid, (list,)):
+        collectionid = ",".join(collectionid)
 
     r = requests.get("https://nda.nih.gov/api/submission/",
                      params={'usersOwnSubmissions': users_own_submissions,
@@ -104,11 +199,38 @@ def get_submissions(auth, collectionid, users_own_submissions=False):
 
     logger.debug("Request %s for collection %s" % (r.url, collectionid))
 
-    if r.status_code != 200:
-        logger.debug(r.status_code)
-        raise requests.HTTPError(r.json())
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        return None
 
-    return r.json()
+
+def get_submission_files(auth, submissionid:int, submission_file_status:str="Complete", 
+                         retrieve_files_to_upload:bool=False) -> dict:
+    """Use the NDA Submission API to get files for an NDA submission.
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        submissionid: An NDA collection ID or a list of NDA collection IDs. If None, gets all submissions.
+        submission_file_status: Status of submission files to retrieve, If None, gets all files.
+        retrieve_files_to_upload: Flag indicating that only files that need to be uploaded be retrived.
+    Returns:
+        dict from JSON format.
+
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}/files",
+                     params={'submissionFileStatus': submission_file_status,
+                             'retrieveFilesToUpload': retrieve_files_to_upload},
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug(f"Request {r.url} for submission {submissionid}")
+
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.body}")
+        return None
 
 def process_submissions(submission_data):
     """Process submissions from nested JSON to a data frame.
@@ -123,33 +245,6 @@ def process_submissions(submission_data):
 
     return pandas.DataFrame(submissions)
 
-def get_submission(auth, submissionid):
-    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
-
-    r = requests.get("https://nda.nih.gov/api/submission/{}".format(submissionid),
-                     auth=auth, headers={'Accept': 'application/json'})
-
-    logger.debug("Request %s for submission %s" % (r, submissionid))
-
-    if r.status_code != 200:
-        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
-
-    return r.json()
-
-def get_submission_files(auth, submissionid, submission_file_status="Complete", retrieve_files_to_upload=False):
-    """Use the NDA api to get the `genomics_sample03` records for a GUID."""
-
-    r = requests.get("https://nda.nih.gov/api/submission/{}/files".format(submissionid),
-                     params={'submissionFileStatus': submission_file_status,
-                             'retrieveFilesToUpload': retrieve_files_to_upload},
-                     auth=auth, headers={'Accept': 'application/json'})
-
-    logger.debug("Request %s for submission %s" % (r, submissionid))
-
-    if r.status_code != 200:
-        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
-
-    return r.json()
 
 def process_submission_files(submission_files):
 
@@ -227,18 +322,6 @@ def process_samples(samples):
     return samples_final
 
 
-def get_subjects(auth, guid):
-    """Use the NDA API to get the `genomics_subject02` records for this GUID."""
-
-    r = requests.get("https://nda.nih.gov/api/guid/{}/data?short_name=genomics_subject02".format(guid),
-                     auth=auth, headers={'Accept': 'application/json'})
-
-    logger.debug("Request %s for GUID %s" % (r, guid))
-    
-    if r.status_code != 200:
-        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
-    
-    return r.json()
 
 def subjects_to_df(json_data):
 
@@ -277,19 +360,6 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     return df
 
 
-def get_tissues(auth, guid):
-    """Use the NDA api to get the `ncihd_btb02` records for this GUID."""
-
-    r = requests.get("https://nda.nih.gov/api/guid/{}/data".format(guid),
-                     params={"short_name": "nichd_btb02"},
-                     auth=auth, headers={'Accept': 'application/json'})
-
-    logger.debug("Request %s for GUID %s" % (r, guid))
-
-    if r.status_code != 200:
-        raise requests.HTTPError("{} - {} - {}".format(r.status_code, r.url, r.body))
-    
-    return r.json()
 
 def tissues_to_df(json_data):
     tmp = []
@@ -558,6 +628,8 @@ class NDASubmissionFiles:
 
 class NDASubmission:
 
+    _subject_manifest = "genomics_subject"
+
     def __init__(self, config, submission_id=None, collection_id=None):
 
         self.config = config # ApplicationProperties().get_config
@@ -627,3 +699,13 @@ class NDASubmission:
                                      'submission_id': s})
         return submission_files
 
+    def get_guids(self):
+        guids = set()
+        for submission_file in self.submission_files:
+            for data_file in submission_file["files"].data_files:
+                data_file_as_string = data_file["content"].decode("utf-8")
+                if self._subject_manifest in data_file_as_string:
+                    manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                    for guid in manifest_df["subjectkey"].tolist():
+                        guids.add(guid)
+        return guids
