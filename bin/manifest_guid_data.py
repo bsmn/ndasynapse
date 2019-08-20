@@ -57,13 +57,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None, 
                         help="Path to file containing NDA user credentials.")
-
-    parser.add_argument("manifest_type", type=str,
-                        help="NDA manifest type (genomics_sample03, genomics_subject02, nichd_btb02")
     parser.add_argument("--synapse_id", type=str, default=COLLECTION_ID_LOCATION,
                         help="Synapse ID for the entity containing the collection ID")
     parser.add_argument("--column_name", type=str, default=COLLECTION_ID_COLUMN,
                         help="Column containing the collection ID")
+    parser.add_argument("manifest_type", type=str,
+                        help="NDA manifest type (genomics_sample03, genomics_subject02, nichd_btb02")
 
     args = parser.parse_args()
 
