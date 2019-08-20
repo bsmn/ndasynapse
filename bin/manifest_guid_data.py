@@ -35,11 +35,12 @@ import argparse
 import io
 import json
 import logging
-import pandas as pd
 import requests
-import synapseclient
 import sys
-sys.path.insert(0, "/home/cmolitor/bsmn_validation/develop_ndasynapse")
+
+import pandas as pd
+import synapseclient
+
 import ndasynapse
 
 logger = logging.getLogger(__name__)
@@ -54,12 +55,11 @@ SUBJECT_MANIFEST = "genomics_subject"
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("nda_credentials", type=argparse.FileType('r'), 
-                        help="File containing NDA user credentials (full path)")
+    parser.add_argument("--config", type=str, default=None, 
+                        help="Path to file containing NDA user credentials.")
+
     parser.add_argument("manifest_type", type=str,
                         help="NDA manifest type (genomics_sample03, genomics_subject02, nichd_btb02")
-    parser.add_argument("out_file", type=argparse.FileType('w'), 
-                        help="Output .csv file (full path)")
     parser.add_argument("--synapse_id", type=str, default=COLLECTION_ID_LOCATION,
                         help="Synapse ID for the entity containing the collection ID")
     parser.add_argument("--column_name", type=str, default=COLLECTION_ID_COLUMN,
@@ -153,7 +153,7 @@ def main():
     # the samples to have been used in other consortia.
     all_collections_df = pared_guids_df[pared_guids_df["collection_id"].isin(collection_id_list)]
     
-    all_collections_df.to_csv(args.out_file, index=False)
+    all_collections_df.to_csv(sys.stdout, index=False)
 
     args.out_file.close()
 
