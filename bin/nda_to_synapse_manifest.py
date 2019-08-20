@@ -68,15 +68,15 @@ def main():
     
     for guid in args.guids:
         samples_guid = ndasynapse.nda.get_samples(auth, guid=guid)
-        samples_guid = ndasynapse.nda.get_sample_data_files(samples_guid)
+        logger.debug(f"Got {len(samples_guid)} samples for {guid}")
+        samples_guid = ndasynapse.nda.sample_data_files_to_df(samples_guid)
 
-        logging.debug("Got samples for %s" % guid)
-        
         # exclude some experiments
         samples_guid = ndasynapse.nda.process_samples(samples_guid)
 
         # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
         try:
+            logger.debug("Fixing Salk site samples still. Check with NDA to confirm change.")
             samples_guid.loc[samples_guid['site'] == 'Salk', 'site'] = 'U01MH106882'
         except KeyError:
             pass
