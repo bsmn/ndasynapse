@@ -79,10 +79,7 @@ def main():
 
     syn_table_query = f'SELECT distinct "{args.column_name}" from {args.synapse_id}'
 
-    try:
         table_results_df = syn.tableQuery(syn_table_query).asDataFrame()
-    except Exception as syn_query_error:
-        raise syn_query_error
 
     # The link to the NDA collection will have a format similar to
     # https://ndar.nih.gov/edit_collection.html?id=<NDA collection ID>
