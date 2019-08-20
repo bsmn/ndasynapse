@@ -254,7 +254,7 @@ def process_submission_files(submission_files):
 
     return pandas.DataFrame(submission_files_processed)
 
-def get_sample_data_files(guid_data):
+def sample_data_files_to_df(guid_data):
     # Get data files from samples.
     tmp = []
 

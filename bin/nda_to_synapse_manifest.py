@@ -68,7 +68,7 @@ def main():
     
     for guid in args.guids:
         samples_guid = ndasynapse.nda.get_samples(auth, guid=guid)
-        samples_guid = ndasynapse.nda.get_sample_data_files(samples_guid)
+        samples_guid = ndasynapse.nda.sample_data_files_to_df(samples_guid)
 
         logging.debug("Got samples for %s" % guid)
         
