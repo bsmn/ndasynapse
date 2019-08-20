@@ -79,7 +79,7 @@ def main():
 
     syn_table_query = f'SELECT distinct "{args.column_name}" from {args.synapse_id}'
 
-        table_results_df = syn.tableQuery(syn_table_query).asDataFrame()
+    table_results_df = syn.tableQuery(syn_table_query).asDataFrame()
 
     # The link to the NDA collection will have a format similar to
     # https://ndar.nih.gov/edit_collection.html?id=<NDA collection ID>
@@ -93,13 +93,7 @@ def main():
         # and the submission ID (['submission_id']).
 
         submission_file_list = ndasynapse.nda.NDASubmission(config, collection_id=coll_id).submission_files
-        for submission in submission_file_list:
-            for data_file in submission["files"].data_files:
-                data_file_as_string = data_file["content"].decode("utf-8")
-                if SUBJECT_MANIFEST in data_file_as_string:
-                    manifest_df = pd.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    for guid in manifest_df["subjectkey"].tolist():
-                        guid_list.append(guid)
+        guid_list = submission_file_list.get_guids()
 
     # Get rid of any duplicates in the GUID list.
     guid_list = list(set(guid_list))
