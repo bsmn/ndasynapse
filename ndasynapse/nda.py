@@ -80,9 +80,11 @@ def authenticate(config):
         A requests.auth.HTTPBasicAuth object.
 
     """
-    
-    ndaconfig = config['nda']
-    
+    try:
+        ndaconfig = config['nda']
+    except KeyError:
+        raise KeyError("Cannot find NDA credentials in config file.")
+
     auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
     
     return auth
@@ -546,7 +548,7 @@ def get_manifests(bucket):
 
         try:
             tmp = pandas.read_csv(manifest_body, delimiter="\t", header=None)
-        except pandas.errors.EmptyDataError as e:
+        except pandas.errors.EmptyDataError:
             logger.info("No data in the manifest for %s" % (m,))
             continue
 
@@ -689,4 +691,5 @@ class NDASubmission:
                     manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
                     for guid in manifest_df["subjectkey"].tolist():
                         guids.add(guid)
+        
         return guids
