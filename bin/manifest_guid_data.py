@@ -136,7 +136,7 @@ def main():
             # Get the collection number and add it to the manifest_data.
             for link_row in ds_row["links"]["link"]:
                 if link_row["rel"].lower() == "collection":
-                    manifest_data["collection_id"] = link_row["href"].split("=")[1]
+                    manifest_data["experiment_collection_id"] = link_row["href"].split("=")[1]
 
             # Get the manifest data dictionary into a dataframe and flatten it out if necessary.
             manifest_flat_df = pd.io.json.json_normalize(manifest_data)
@@ -150,7 +150,12 @@ def main():
     pared_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
 
     # Run the data through the list of BSMN collection IDs since it is possible for
-    # the samples to have been used in other consortia.
+    # the samples to have been used in other consortia. We need to add the Reference
+    # Tissue Project collection to the list, since the NDA allows a submission for an
+    # experiment that was defined outside of the collection and several of the
+    # experiments were defined in the reference tissue project.
+    collection_id_list.append("2458")
+
     all_collections_df = pared_guids_df[pared_guids_df["collection_id"].isin(collection_id_list)]
     
     all_collections_df.to_csv(args.out_file, index=False)
