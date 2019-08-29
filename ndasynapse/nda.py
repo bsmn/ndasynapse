@@ -33,7 +33,7 @@ METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_
                     'sample_amount', 'phenotype',
                     'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
+SAMPLE_COLUMNS = ['collection_id', 'datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
                   'src_subject_id', 'subjectkey']
@@ -286,12 +286,36 @@ def process_submission_files(submission_files):
 
     return pandas.DataFrame(submission_files_processed)
 
+def get_collection_ids_from_links(data_structure_row: dict) -> set:
+    """Get a set of collection IDs from a data structure row from the NDA GUID API.
+
+    Args:
+        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+    Returns:
+        a set of collection IDs as integers.
+
+    """
+
+    curr_collection_ids = set()
+    for link_row in data_structure_row["links"]["link"]:
+        if link_row["rel"].lower() == "collection":
+            curr_collection_ids.add(int(link_row["href"].split("=")[1]))
+    
+    if len(curr_collection_ids) > 1:
+        logger.warn(f"Found different collection ids: {curr_collection_ids}")
+
+    return curr_collection_ids
+
 def sample_data_files_to_df(guid_data):
     # Get data files from samples.
     tmp = []
 
     for row in guid_data['age'][0]['dataStructureRow']:
-        tmp_row_dict = {}
+
+        collection_id = get_collection_ids_from_links(row).pop()
+        dataset_id = row['datasetId']
+        tmp_row_dict = {'collection_id': collection_id, 'datasetId': dataset_id}
+
         for col in row['dataElement']:
             tmp_row_dict[col['name']] = col['value']
             if col.get('md5sum') and col.get('size') and col['name'].startswith('DATA_FILE'):
@@ -300,7 +324,7 @@ def sample_data_files_to_df(guid_data):
         tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
-    samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
+    # samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
 
     return samples
 
@@ -312,15 +336,16 @@ def process_samples(samples):
     datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist()
 
     samples_final = pandas.DataFrame()
-
+    sample_columns = [column for column in samples.columns.tolist() if not column.startswith("data_file")]
+    
     for col in datafile_column_names:
-        sample_columns = [x for x in SAMPLE_COLUMNS if x in samples.columns]
-        samples_tmp = samples[sample_columns + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
+        keep_cols = sample_columns + [col, f'{col}_type', f'{col}_md5sum', f'{col}_size']
+        samples_tmp = samples[keep_cols]
 
         samples_tmp.rename(columns={col: 'data_file',
-                                    '%s_type' % col: 'fileFormat',
-                                    '%s_md5sum' % col: 'md5',
-                                    '%s_size' % col: 'size'},
+                                    f'{col}_type': 'fileFormat',
+                                    f'{col}_md5sum': 'md5',
+                                    f'{col}_size': 'size'},
                            inplace=True)
 
         samples_final = pandas.concat([samples_final, samples_tmp], ignore_index=True)
@@ -359,7 +384,10 @@ def subjects_to_df(json_data):
     tmp = []
 
     for row in json_data['age'][0]['dataStructureRow']:
+        collection_id = get_collection_ids_from_links(row).pop()
+
         foo = {col['name']: col['value'] for col in row['dataElement']}
+        foo['collection_id'] = collection_id
         tmp.append(foo)
 
     df = pandas.io.json.json_normalize(tmp)
@@ -375,7 +403,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     # anywhere, so dropping them for now
     # Exclude some subjects
     df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
-    df.drop(["genomics_subject02_id"], axis=1, inplace=True)
+    # df.drop(["genomics_subject02_id"], axis=1, inplace=True)
 
     df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
 
@@ -391,12 +419,14 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     return df
 
 
-
 def tissues_to_df(json_data):
     tmp = []
     
     for row in json_data['age'][0]['dataStructureRow']:
+        collection_id = get_collection_ids_from_links(row).pop()
+
         foo = {col['name']: col['value'] for col in row['dataElement']}
+        foo['collection_id'] = collection_id
         tmp.append(foo)
 
     df = pandas.io.json.json_normalize(tmp)
@@ -411,7 +441,7 @@ def process_tissues(df):
     df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
 
     # This makes them non-unique, so drop them
-    df.drop('nichd_btb02_id', axis=1, inplace=True)
+    # df.drop('nichd_btb02_id', axis=1, inplace=True)
 
     df = df.drop_duplicates()
 
@@ -676,8 +706,12 @@ class NDASubmission:
             collection_id = submission['collection']['id']
 
             files = get_submission_files(auth=self.auth, submissionid=submission_id)
-
+            processed_files = process_submission_files(submission_files=files)
+            processed_files['submission_id'] = submission_id
+            processed_files['collection_id'] = collection_id
+            
             submission_files.append({'files': NDASubmissionFiles(self.config, files),
+                                     'processed_files': processed_files,
                                      'collection_id': collection_id,
                                      'submission_id': submission_id})
         return submission_files
@@ -685,11 +719,12 @@ class NDASubmission:
     def get_guids(self):
         guids = set()
         for submission_file in self.submission_files:
+            submission_id = submission_file['submission_id']
             for data_file in submission_file["files"].data_files:
                 data_file_as_string = data_file["content"].decode("utf-8")
                 if self._subject_manifest in data_file_as_string:
                     manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
                     for guid in manifest_df["subjectkey"].tolist():
-                        guids.add(guid)
+                        guids.add((submission_id, guid))
         
-        return guids
+        return [{'submission_id': submission_id, "guid": guid} for submission_id, guid in guids]
