@@ -90,6 +90,28 @@ def authenticate(config):
     return auth
 
 
+def get_guid(auth, subjectkey: str) -> dict:
+    """Get available data from the GUID API.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        subjectkey: An NDA GUID (Globally Unique Identifier)
+    Returns:
+        dict from JSON format.
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/",
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug(f"Request {r} for GUID {subjectkey}")
+
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
+        return None
+
+
 def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
     """Get data from the GUID API.
 
@@ -681,6 +703,7 @@ class NDASubmissionFiles:
 class NDASubmission:
 
     _subject_manifest = "genomics_subject"
+    _sample_manifest = "genomics_sample"
 
     def __init__(self, config, submission_id=None, collection_id=None):
 
@@ -716,15 +739,47 @@ class NDASubmission:
                                      'submission_id': submission_id})
         return submission_files
 
+    @staticmethod
+    def get_manifest_file_data(data_files, manifest_type):
+        for data_file in data_files:
+
+            data_file_as_string = data_file["content"].decode("utf-8")
+
+            if manifest_type in data_file_as_string:
+                manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                return manifest_df
+
+        return None    
+
+
     def get_guids(self):
+        """Get a list of GUIDs for each submission from the genomics subject manifest data file.
+        
+        This requires looking inside the submission-associated data file to find the GUIDs.
+        It is prone to issues of being outdated due to submission edits. It 
+
+        """
+        
         guids = set()
         for submission_file in self.submission_files:
+            submission_guids = set()
             submission_id = submission_file['submission_id']
-            for data_file in submission_file["files"].data_files:
-                data_file_as_string = data_file["content"].decode("utf-8")
-                if self._subject_manifest in data_file_as_string:
-                    manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    for guid in manifest_df["subjectkey"].tolist():
-                        guids.add((submission_id, guid))
-        
+
+            manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
+                                                      self._sample_manifest)
+
+            if manifest_df is None:
+                logger.debug(f"No {self._sample_manifest} manifest in this submission. Looking for the {self._subject_manifest} manifest.")
+                manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
+                                                        self._subject_manifest)
+
+            if manifest_df is not None:
+                for guid in manifest_df["subjectkey"].tolist():
+                    submission_guids.add((submission_id, guid))
+            else:
+                logger.info(f"No manifest with GUIDs found for submission {submission_id}")
+
+            logger.debug(f"Adding {len(submission_guids)} GUIDS for submission {submission_id}.")
+            guids = guids.union(submission_guids)
+
         return [{'submission_id': submission_id, "guid": guid} for submission_id, guid in guids]

@@ -23,6 +23,9 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+def get_guid(auth, args, config=None):
+    guids = ndasynapse.nda.get_guid(auth, args.guid)
+    
 def get_collection_submissions(auth, args, config=None):
     logger.debug("collectionids = {collection_id}".format(collection_id=args.collection_id))
     submissions = ndasynapse.nda.get_submissions(auth, collectionid=[str(x) for x in args.collection_id])
@@ -70,11 +73,15 @@ def get_subjects(auth, args, config=None):
     data_df = ndasynapse.nda.process_subjects(data_df)
     data_df.to_csv(sys.stdout, index=False)
 
+_guid_fieldnames = ['submission_id', 'guid']
+
 def get_collection_guids(auth, args, config=None):
     submissions = ndasynapse.nda.NDASubmission(config=config, 
                                                collection_id=args.collection_id)
     guids = submissions.get_guids()
-    sys.stdout.write(guids)
+    wr = csv.DictWriter(sys.stdout, fieldnames=_guid_fieldnames)
+    wr.writeheader()
+    wr.writerows(guids)
 
 def get_collection_manifests(auth, args, config=None):
     logger.warn("Information in the collection manifests may be out of date.")
