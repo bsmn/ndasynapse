@@ -33,7 +33,7 @@ METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey', 'sample_id_
                     'sample_amount', 'phenotype',
                     'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
+SAMPLE_COLUMNS = ['collection_id', 'datasetid', 'experiment_id', 'sample_id_original', 'storage_protocol',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
                   'src_subject_id', 'subjectkey']
@@ -80,12 +80,36 @@ def authenticate(config):
         A requests.auth.HTTPBasicAuth object.
 
     """
-    
-    ndaconfig = config['nda']
-    
+    try:
+        ndaconfig = config['nda']
+    except KeyError:
+        raise KeyError("Cannot find NDA credentials in config file.")
+
     auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], ndaconfig['password'])
     
     return auth
+
+
+def get_guid(auth, subjectkey: str) -> dict:
+    """Get available data from the GUID API.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
+        subjectkey: An NDA GUID (Globally Unique Identifier)
+    Returns:
+        dict from JSON format.
+    """
+
+    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/",
+                     auth=auth, headers={'Accept': 'application/json'})
+
+    logger.debug(f"Request {r} for GUID {subjectkey}")
+
+    if r.ok:
+        return r.json()
+    else:
+        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
+        return None
 
 
 def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
@@ -195,7 +219,8 @@ def get_submissions(auth, collectionid, status="Upload Completed", users_own_sub
 
     r = requests.get("https://nda.nih.gov/api/submission/",
                      params={'usersOwnSubmissions': users_own_submissions,
-                             'collectionId': collectionid},
+                             'collectionId': collectionid,
+                             'status': status},
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for collection %s" % (r.url, collectionid))
@@ -284,12 +309,36 @@ def process_submission_files(submission_files):
 
     return pandas.DataFrame(submission_files_processed)
 
+def get_collection_ids_from_links(data_structure_row: dict) -> set:
+    """Get a set of collection IDs from a data structure row from the NDA GUID API.
+
+    Args:
+        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+    Returns:
+        a set of collection IDs as integers.
+
+    """
+
+    curr_collection_ids = set()
+    for link_row in data_structure_row["links"]["link"]:
+        if link_row["rel"].lower() == "collection":
+            curr_collection_ids.add(int(link_row["href"].split("=")[1]))
+    
+    if len(curr_collection_ids) > 1:
+        logger.warn(f"Found different collection ids: {curr_collection_ids}")
+
+    return curr_collection_ids
+
 def sample_data_files_to_df(guid_data):
     # Get data files from samples.
     tmp = []
 
     for row in guid_data['age'][0]['dataStructureRow']:
-        tmp_row_dict = {}
+
+        collection_id = get_collection_ids_from_links(row).pop()
+        dataset_id = row['datasetId']
+        tmp_row_dict = {'collection_id': collection_id, 'datasetId': dataset_id}
+
         for col in row['dataElement']:
             tmp_row_dict[col['name']] = col['value']
             if col.get('md5sum') and col.get('size') and col['name'].startswith('DATA_FILE'):
@@ -298,7 +347,7 @@ def sample_data_files_to_df(guid_data):
         tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
-    samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
+    # samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
 
     return samples
 
@@ -310,15 +359,16 @@ def process_samples(samples):
     datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist()
 
     samples_final = pandas.DataFrame()
-
+    sample_columns = [column for column in samples.columns.tolist() if not column.startswith("data_file")]
+    
     for col in datafile_column_names:
-        sample_columns = [x for x in SAMPLE_COLUMNS if x in samples.columns]
-        samples_tmp = samples[sample_columns + [col, '%s_type' % col, '%s_md5sum' % col, '%s_size' % col]]
+        keep_cols = sample_columns + [col, f'{col}_type', f'{col}_md5sum', f'{col}_size']
+        samples_tmp = samples[keep_cols]
 
         samples_tmp.rename(columns={col: 'data_file',
-                                    '%s_type' % col: 'fileFormat',
-                                    '%s_md5sum' % col: 'md5',
-                                    '%s_size' % col: 'size'},
+                                    f'{col}_type': 'fileFormat',
+                                    f'{col}_md5sum': 'md5',
+                                    f'{col}_size': 'size'},
                            inplace=True)
 
         samples_final = pandas.concat([samples_final, samples_tmp], ignore_index=True)
@@ -357,7 +407,10 @@ def subjects_to_df(json_data):
     tmp = []
 
     for row in json_data['age'][0]['dataStructureRow']:
+        collection_id = get_collection_ids_from_links(row).pop()
+
         foo = {col['name']: col['value'] for col in row['dataElement']}
+        foo['collection_id'] = collection_id
         tmp.append(foo)
 
     df = pandas.io.json.json_normalize(tmp)
@@ -373,7 +426,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     # anywhere, so dropping them for now
     # Exclude some subjects
     df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
-    df.drop(["genomics_subject02_id"], axis=1, inplace=True)
+    # df.drop(["genomics_subject02_id"], axis=1, inplace=True)
 
     df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
 
@@ -389,12 +442,14 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     return df
 
 
-
 def tissues_to_df(json_data):
     tmp = []
     
     for row in json_data['age'][0]['dataStructureRow']:
+        collection_id = get_collection_ids_from_links(row).pop()
+
         foo = {col['name']: col['value'] for col in row['dataElement']}
+        foo['collection_id'] = collection_id
         tmp.append(foo)
 
     df = pandas.io.json.json_normalize(tmp)
@@ -409,7 +464,7 @@ def process_tissues(df):
     df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
 
     # This makes them non-unique, so drop them
-    df.drop('nichd_btb02_id', axis=1, inplace=True)
+    # df.drop('nichd_btb02_id', axis=1, inplace=True)
 
     df = df.drop_duplicates()
 
@@ -546,7 +601,7 @@ def get_manifests(bucket):
 
         try:
             tmp = pandas.read_csv(manifest_body, delimiter="\t", header=None)
-        except pandas.errors.EmptyDataError as e:
+        except pandas.errors.EmptyDataError:
             logger.info("No data in the manifest for %s" % (m,))
             continue
 
@@ -649,6 +704,7 @@ class NDASubmissionFiles:
 class NDASubmission:
 
     _subject_manifest = "genomics_subject"
+    _sample_manifest = "genomics_sample"
 
     def __init__(self, config, submission_id=None, collection_id=None):
 
@@ -674,19 +730,57 @@ class NDASubmission:
             collection_id = submission['collection']['id']
 
             files = get_submission_files(auth=self.auth, submissionid=submission_id)
-
+            processed_files = process_submission_files(submission_files=files)
+            processed_files['submission_id'] = submission_id
+            processed_files['collection_id'] = collection_id
+            
             submission_files.append({'files': NDASubmissionFiles(self.config, files),
+                                     'processed_files': processed_files,
                                      'collection_id': collection_id,
                                      'submission_id': submission_id})
         return submission_files
 
+    @staticmethod
+    def get_manifest_file_data(data_files, manifest_type):
+        for data_file in data_files:
+
+            data_file_as_string = data_file["content"].decode("utf-8")
+
+            if manifest_type in data_file_as_string:
+                manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                return manifest_df
+
+        return None    
+
+
     def get_guids(self):
+        """Get a list of GUIDs for each submission from the genomics subject manifest data file.
+        
+        This requires looking inside the submission-associated data file to find the GUIDs.
+        It is prone to issues of being outdated due to submission edits. It 
+
+        """
+        
         guids = set()
         for submission_file in self.submission_files:
-            for data_file in submission_file["files"].data_files:
-                data_file_as_string = data_file["content"].decode("utf-8")
-                if self._subject_manifest in data_file_as_string:
-                    manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    for guid in manifest_df["subjectkey"].tolist():
-                        guids.add(guid)
-        return guids
+            submission_guids = set()
+            submission_id = submission_file['submission_id']
+
+            manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
+                                                      self._sample_manifest)
+
+            if manifest_df is None:
+                logger.debug(f"No {self._sample_manifest} manifest in this submission. Looking for the {self._subject_manifest} manifest.")
+                manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
+                                                        self._subject_manifest)
+
+            if manifest_df is not None:
+                for guid in manifest_df["subjectkey"].tolist():
+                    submission_guids.add((submission_id, guid))
+            else:
+                logger.info(f"No manifest with GUIDs found for submission {submission_id}")
+
+            logger.debug(f"Adding {len(submission_guids)} GUIDS for submission {submission_id}.")
+            guids = guids.union(submission_guids)
+
+        return [{'submission_id': submission_id, "guid": guid} for submission_id, guid in guids]
