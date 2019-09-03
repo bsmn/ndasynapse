@@ -103,7 +103,7 @@ def main():
     parser_get_submission_files.add_argument('--submission_id', type=int, help='NDA submission ID.')
     parser_get_submission_files.set_defaults(func=get_submission_files)
 
-    parser_get_collection_manifest = subparsers.add_parser('get-collection-manifests', help='Get an NDA submission.')
+    parser_get_collection_manifest = subparsers.add_parser('get-collection-manifests', help='Get manifest files that were submitted in an NDA collection.')
     parser_get_collection_manifest.add_argument('--collection_id', type=int, nargs="+", help='NDA collection ID.')
     parser_get_collection_manifest.add_argument('--manifest_type', type=str,
                                                 help='Which manifest type to get, one of "genomics_sample", "genomics_subject", or "nichd_btb".')
