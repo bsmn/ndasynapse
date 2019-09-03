@@ -219,7 +219,8 @@ def get_submissions(auth, collectionid, status="Upload Completed", users_own_sub
 
     r = requests.get("https://nda.nih.gov/api/submission/",
                      params={'usersOwnSubmissions': users_own_submissions,
-                             'collectionId': collectionid},
+                             'collectionId': collectionid,
+                             'status': status},
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug("Request %s for collection %s" % (r.url, collectionid))
