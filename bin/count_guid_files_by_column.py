@@ -9,6 +9,8 @@ Purpose: Uses the output sample file from manifest_guid_data.py to break down
 
 Input parameters: Input file
                   Experiment ID
+                  Optional GUID to be removed from the count. It is assumed that
+                     the GUID column name is "subjectkey".
 
 Outputs: stdout
 
@@ -26,6 +28,8 @@ def main():
                         help="Sample file created by manifest_guid_data.py")
     parser.add_argument("experiment_id", type=int, help="Experiment ID")
     parser.add_argument("column_name", type=str, help="Column name")
+    parser.add_argument("--remove_guid", type=str,
+                          help="GUID to remove from the count")
 
     args = parser.parse_args()
 
@@ -37,6 +41,10 @@ def main():
 
     # Convert the column labels to lower case.
     file_data_df.columns = file_data_df.columns.str.lower()
+
+    # If a GUID has been specified to remove from the data, remove it.
+    if args.remove_guid is not None:
+        file_data_df = file_data_df.loc[file_data_df["subjectkey"] != args.remove_guid]
 
     # Grab the records for the specified experiment ID.
     exp_data_df = file_data_df.loc[file_data_df["experiment_id"] == args.experiment_id]

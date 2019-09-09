@@ -11,12 +11,14 @@ Input parameters: Experiment ID
                       count. The default is syn18344730.
                   Optional column name to count. The default is
                       sample_id_original.
+                  Optional GUID to remove from the count. Assumes that the GUID
+                      column label is "subjectkey".
 
 Outputs: Terminal output
 
 Execution: count_experiment_samples.py <experiment ID>
                --synapse_id <Synapse ID> --column_name <column name>
-               --template_version_exists
+               --template_version_exists --remove_guid <GUID>
 """
 
 import argparse
@@ -38,6 +40,8 @@ def main():
                         help="Column to be counted")
     parser.add_argument("--template_version_exists", action="store_true",
                         help="Is the first row the template and version?")
+    parser.add_argument("--remove_guid", type=str,
+                        help="GUID to be removed from the count")
 
     args = parser.parse_args()
 
@@ -61,6 +65,10 @@ def main():
     # Change the column labels and the input column label to lower case.
     sample_df.columns = sample_df.columns.str.lower()
     column_name = args.column_name.lower()
+
+    # If there is a specified GUID to remove from the data, get rid of it.
+    if args.remove_guid is not None:
+      sample_df = sample_df.loc[sample_df["subjectkey"] != args.remove_guid]
 
     # Make sure that the required columns are in the dataframe.
     if not ({'experiment_id', column_name}.issubset(sample_df.columns)):
