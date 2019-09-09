@@ -721,6 +721,7 @@ class NDASubmissionFiles:
         Returns:
             Pandas data frame, or None if no data file found.
         """
+        logger.warning("Information in the submission manifests may be out of date with respect to the NDA database.")
 
         for data_file in self.data_files:
             data_file_as_string = data_file['content'].decode('utf-8')
@@ -745,6 +746,7 @@ class NDASubmission:
                      self.config.get('password'))
         self.submission_id = submission_id
         self.submission = get_submission(auth=self.auth, submissionid=submission_id)
+        self.processed_submission = process_submissions(submission_data=self.submission)
         self.submission_files = self.get_submission_files()
         self.guids = self.get_guids()
         self.logger.info(f"Got submission {self.submission_id}.")
@@ -773,7 +775,8 @@ class NDASubmission:
         It is prone to issues of being outdated due to submission edits. It 
 
         """
-        
+        logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
+
         guids = set()
 
         submission_data_files = self.submission_files["files"].data_files
@@ -835,9 +838,50 @@ class NDACollection(object):
         It is prone to issues of being outdated due to submission edits. It 
 
         """
-        
+        logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
+
         guids = set()
         for submission in self.submissions:
             guids.update(submission.guids)
 
         return guids
+        
+    def get_collection_manifests(self, manifest_type):
+        """Get all original manifests submitted with each submission in a collection.
+
+        NDA does not update these files if metadata change requests are made.
+        They only update metadata in their database, accessible through the GUID API.
+        Records obtained here should be used for historical purposes only.
+
+        Args:
+            manifest_type: An NDA manifest type, like 'genomics_sample'.
+        Returns:
+            A pandas data frame of all submission manifests concatenated together.
+        """
+
+        logger.warning("Information in the collection manifests may be out of date.")
+        
+        all_data = []
+
+        for submission in self.submissions:
+            
+            try:
+                ndafiles = submission.submission_files['files']
+            except IndexError:
+                logger.info(f"No submission files for collection {coll_id}.")
+                continue
+
+            manifest_data = ndafiles.manifest_to_df(manifest_type)
+
+            if manifest_data is not None and manifest_data.shape[0] > 0:
+                manifest_data['collection_id'] = self.collection_id
+                manifest_data['submission_id'] = submission.submission_id
+                all_data.append(manifest_data)
+            else:
+                logger.info(f"No {manifest_type} data found for submission {submission.submission_id}.")
+        
+        if all_data:
+            all_data_df = pandas.concat(all_data, axis=0, ignore_index=True, sort=False)
+            return all_data_df
+
+        return pandas.DataFrame()

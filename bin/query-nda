@@ -34,9 +34,11 @@ def get_collection_submissions(auth, args, config=None):
     submissions_processed.to_csv(sys.stdout, index=False)
 
 def get_submission(auth, args, config=None):
-    submission = ndasynapse.nda.get_submission(auth, submissionid=args.submission_id)
-    submissions_processed = ndasynapse.nda.process_submissions(submission)
-    submissions_processed.to_csv(sys.stdout, index=False)
+    submission = ndasynapse.nda.NDASubmission(config, submission_id=args.submission_id)
+    if args.json:
+        sys.stdout.write(json.dumps(submission.submission, indent=2))
+    else:
+        submission.processed_submission.to_csv(sys.stdout, index=False)
 
 def get_submission_files(auth, args, config=None):
     submission = ndasynapse.nda.get_submission_files(auth, submissionid=args.submission_id)
@@ -54,64 +56,70 @@ def get_collection_submission_files(auth, args, config=None):
 
 
 def get_experiments(auth, args, config=None):
-    expts = ndasynapse.nda.get_experiments(auth,
+    data = ndasynapse.nda.get_experiments(auth,
                                            args.experiment_id)
     
-    expts = ndasynapse.nda.process_experiments(expts)
-    expts = expts.drop_duplicates()
-    expts.to_csv(sys.stdout, index=False)
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data = ndasynapse.nda.process_experiments(data)
+        data = data.drop_duplicates()
+        data.to_csv(sys.stdout, index=False)
 
 def get_samples(auth, args, config=None):
-    samples_data = ndasynapse.nda.get_samples(auth=auth, guid=args.guid)
-    samples_data_df = ndasynapse.nda.sample_data_files_to_df(samples_data)
-    samples_data_df = ndasynapse.nda.process_samples(samples_data_df)
-    samples_data_df.to_csv(sys.stdout, index=False)
+    data = ndasynapse.nda.get_samples(auth=auth, guid=args.guid)
+
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data_df = ndasynapse.nda.sample_data_files_to_df(data)
+        data_df = ndasynapse.nda.process_samples(data_df)
+        data_df.to_csv(sys.stdout, index=False)
 
 def get_subjects(auth, args, config=None):
     data = ndasynapse.nda.get_subjects(auth=auth, guid=args.guid)
-    data_df = ndasynapse.nda.subjects_to_df(data)
-    data_df = ndasynapse.nda.process_subjects(data_df)
-    data_df.to_csv(sys.stdout, index=False)
+
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data_df = ndasynapse.nda.subjects_to_df(data)
+        data_df = ndasynapse.nda.process_subjects(data_df)
+        data_df.to_csv(sys.stdout, index=False)
 
 _guid_fieldnames = ['submission_id', 'guid']
 
 def get_collection_guids(auth, args, config=None):
-    submissions = ndasynapse.nda.NDASubmission(config=config, 
-                                               collection_id=args.collection_id)
-    guids = submissions.get_guids()
-    wr = csv.DictWriter(sys.stdout, fieldnames=_guid_fieldnames)
-    wr.writeheader()
-    wr.writerows(guids)
+    nda_collection = ndasynapse.nda.NDACollection(config, collection_id=args.collection_id)
+    guids = [str(guid) for guid in nda_collection.guids]
+    sys.stdout.write("\n".join(guids))
 
 def get_collection_manifests(auth, args, config=None):
-    logger.warn("Information in the collection manifests may be out of date.")
-    data_frames = []
-    # associated_files_data_frames = []
+    """Get all original manifests submitted with each submission in a collection.
+
+    NDA does not update these files if metadata change requests are made.
+    They only update metadata in their database, accessible through the GUID API.
+    Records obtained here should be used for historical purposes only.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object authenticating to NDA.
+        args: arpgarse arguments
+        config: optional configuration file that has NDA endpoint information.
+    Returns:
+        Output to stdout in CSV format of all submission manifests concatenated together.
+    """
     
+    all_data = []
+
     for collection_id in args.collection_id:
-        submissions = ndasynapse.nda.NDASubmission(config=config, collection_id=collection_id)
-        for submission in submissions.submission_files:
-            logging.debug('GUIDs from submission {} in collection {}'.
-                          format(submission['submission_id'],
-                                 submission['collection_id']))
-            for data_file in submission['files'].data_files:
-                data_file_as_string = data_file['content'].decode('utf-8')
-                if args.manifest_type in data_file_as_string:
-                    data = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    data['collection_id'] = submission['collection_id']
-                    data['submission_id'] = submission['submission_id']
-                    data_frames.append(data)
+        nda_collection = ndasynapse.nda.NDACollection(config, collection_id=collection_id)
 
-            # associated_files = pandas.DataFrame.from_dict(submission['files'].associated_files)
-            # associated_files['collection_id'] = submission['collection_id']
-            # associated_files['submission_id'] = submission['submission_id']
-            # associated_files_data_frames.append(associated_files)
+        manifest_data = nda_collection.get_collection_manifests(manifest_type=args.manifest_type)
+        all_data.append(manifest_data)
+    
+    if all_data:
+        all_data_df = pandas.concat(all_data, axis=0, ignore_index=True, sort=False)
+        all_data_df.to_csv(sys.stdout, index=False)
 
-    # if associated_files_data_frames:
-    #     print(pandas.concat(associated_files_data_frames))
-
-    if data_frames:
-        pandas.concat(data_frames).to_csv(sys.stdout, index=False)
     
 def main():
 
@@ -121,6 +129,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--json", action="store_true", default=False, help="Output in JSON format, if possible. Default is to output in CSV format.")
 
     subparsers = parser.add_subparsers(help='sub-command help')
 
