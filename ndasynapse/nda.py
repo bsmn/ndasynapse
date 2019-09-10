@@ -300,10 +300,26 @@ def process_submissions(submission_data):
 
     return pandas.DataFrame(submissions)
 
+def ndar_central_location(fileobj):
+    bucket, key = (fileobj['file_remote_path']
+                    .split('//')[1]
+                    .split('/', 1))
+    return {'Bucket': bucket, 'Key': key}
+
+
+def nda_bsmn_location(fileobj, collection_id, submission_id):
+    original_key = (fileobj['file_remote_path']
+                    .split('//')[1]
+                    .split('/', 1)[1]
+                    .replace('ndar_data/DataSubmissions', 'submission_{}/ndar_data/DataSubmissions'.format(submission_id))
+                    )
+    nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
+    return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
 
 def process_submission_files(submission_files):
 
-    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], file_remote_path=x['file_remote_path'],
+    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], 
+                                       file_remote_path=x['file_remote_path'],
                                        status=x['status'], md5sum=x['md5sum'], size=x['size'],
                                        created_date=x['created_date'], modified_date=x['modified_date']) for x in submission_files]
 
@@ -428,7 +444,13 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
     # df.drop(["genomics_subject02_id"], axis=1, inplace=True)
 
-    df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
+    try:
+        df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
+    except KeyError as e:
+        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}")
+        logger.error(f"Trying to use 'gender' and add new 'sex' column.")
+        df['sex'] = df['gender'].replace(['M', 'F'], ['male', 'female'])
+        # df = df.drop(labels='gender', axis=1, inplace=True)
 
     df = df.assign(subject_sample_id_original=df.sample_id_original,
                    subject_biorepository=df.biorepository)
@@ -659,18 +681,22 @@ class NDASubmissionFiles:
     logger = logging.getLogger('NDASubmissionFiles')
     logger.setLevel(logging.INFO)
 
-    def __init__(self, config, files):
+    def __init__(self, config, files, collection_id, submission_id):
         self.config = config # ApplicationProperties().get_config
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
         self.headers = {'Accept': 'application/json'}
-
+        self.collection_id = collection_id
+        self.submission_id = submission_id
+        
         (self.associated_files,
          self.data_files,
          self.manifest_file,
          self.submission_package,
          self.submission_ticket,
          self.submission_memento) = self.get_nda_submission_file_types(files)
+        
+        self.bsmn_locations = [nda_bsmn_location(x, self.collection_id, self.submission_id) for x in files]
 
         self.debug = True
 
@@ -759,8 +785,8 @@ class NDASubmission:
         processed_files = process_submission_files(submission_files=files)
         processed_files['submission_id'] = submission_id
         processed_files['collection_id'] = collection_id
-        
-        submission_files = {'files': NDASubmissionFiles(self.config, files),
+
+        submission_files = {'files': NDASubmissionFiles(self.config, files, collection_id, submission_id),
                             'processed_files': processed_files,
                             'collection_id': collection_id,
                             'submission_id': submission_id}

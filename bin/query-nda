@@ -46,11 +46,11 @@ def get_submission_files(auth, args, config=None):
     submissions_processed.to_csv(sys.stdout, index=False)
 
 def get_collection_submission_files(auth, args, config=None):
-    submissions_obj = ndasynapse.nda.NDASubmission(config=config,
-                                                   collection_id=args.collection_id)
+    nda_collection = ndasynapse.nda.NDACollection(config=config,
+                                                  collection_id=args.collection_id)
     
 
-    sub_files =  [s['processed_files'] for s in submissions_obj.submission_files] # pylint: disable:line-too-long
+    sub_files =  [sub.submission_files['processed_files'] for sub in nda_collection.submissions] # pylint: disable:line-too-long
     submission_files_processed = pandas.concat(sub_files)
     submission_files_processed.to_csv(sys.stdout, index=False)
 
