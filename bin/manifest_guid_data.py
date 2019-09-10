@@ -103,7 +103,7 @@ def main():
     # https://ndar.nih.gov/edit_collection.html?id=<NDA collection ID>
     collection_id_list = table_results_df[args.column_name].tolist()
     
-    collection_id_list = collection_id_list[:3]
+    collection_id_list = collection_id_list
     
     logger.debug(collection_id_list)
 
@@ -113,20 +113,19 @@ def main():
         # including the file content (['files']), the collection ID (['collection_id']),
         # and the submission ID (['submission_id']).
 
-        nda_submission = ndasynapse.nda.NDASubmission(nda_config, collection_id=coll_id)
-        
-        guid_list = nda_submission.get_guids()
-
+        nda_collection = ndasynapse.nda.NDACollection(nda_config, collection_id=coll_id)
+                
         # Cycle through the guids and query for the specified manifest type.
-        for guid in guid_list:
+        for guid in nda_collection.guids:
+            
             guid_data = ndasynapse.nda.get_guid_data(auth=auth, subjectkey=guid, 
-                                                     short_name=args.manifest_type)
+                                                    short_name=args.manifest_type)
             
             # It is possible for there to be no data for the specified manifest type. If this
             # is the case, the GUID API will return an OK status (status_code = 200) and an
             # empty data structure, which will cause the code to crash further down, so check
             # to make sure that the data structure is not empty before continuing.
-            if len(guid_data["age"]) == 0:
+            if guid_data is None or len(guid_data["age"]) == 0:
                 logger.debug(f"No data for guid {guid}")
                 continue
 
@@ -160,14 +159,14 @@ def main():
                 manifest_id = (args.manifest_type + "_id").upper()
                 all_guids_df.drop(manifest_id, axis=1, inplace=True)
                 column_list = (all_guids_df.columns).tolist()
-                pared_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
+                all_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
 
     # Run the data through the list of BSMN collection IDs since it is possible for
     # the samples to have been used in other consortia.
     # TODO (KD): think this can be removed with the new checks above.
-    all_collections_df = pared_guids_df[pared_guids_df["collection_id"].isin(collection_id_list)]
+    all_collections_df = all_guids_df # [all_guids_df["collection_id"].isin(collection_id_list)]
     
-    all_collections_df.to_csv(sys.stdout, mode='a', index=False)
+    all_collections_df.to_csv(sys.stdout, index=False)
 
 if __name__ == "__main__":
     main()

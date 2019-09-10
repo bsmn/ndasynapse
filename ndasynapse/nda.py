@@ -19,7 +19,7 @@ pandas.options.display.max_colwidth = 1000
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
@@ -300,10 +300,26 @@ def process_submissions(submission_data):
 
     return pandas.DataFrame(submissions)
 
+def ndar_central_location(fileobj):
+    bucket, key = (fileobj['file_remote_path']
+                    .split('//')[1]
+                    .split('/', 1))
+    return {'Bucket': bucket, 'Key': key}
+
+
+def nda_bsmn_location(fileobj, collection_id, submission_id):
+    original_key = (fileobj['file_remote_path']
+                    .split('//')[1]
+                    .split('/', 1)[1]
+                    .replace('ndar_data/DataSubmissions', 'submission_{}/ndar_data/DataSubmissions'.format(submission_id))
+                    )
+    nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
+    return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
 
 def process_submission_files(submission_files):
 
-    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], file_remote_path=x['file_remote_path'],
+    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], 
+                                       file_remote_path=x['file_remote_path'],
                                        status=x['status'], md5sum=x['md5sum'], size=x['size'],
                                        created_date=x['created_date'], modified_date=x['modified_date']) for x in submission_files]
 
@@ -428,7 +444,13 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     df = df[~df.genomics_subject02_id.isin(exclude_genomics_subjects)]
     # df.drop(["genomics_subject02_id"], axis=1, inplace=True)
 
-    df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
+    try:
+        df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
+    except KeyError as e:
+        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}")
+        logger.error(f"Trying to use 'gender' and add new 'sex' column.")
+        df['sex'] = df['gender'].replace(['M', 'F'], ['male', 'female'])
+        # df = df.drop(labels='gender', axis=1, inplace=True)
 
     df = df.assign(subject_sample_id_original=df.sample_id_original,
                    subject_biorepository=df.biorepository)
@@ -636,6 +658,17 @@ def find_duplicate_filenames(metadata):
     return (metadata[~basenames.isin(duplicates)],
             metadata[basenames.isin(duplicates)])
 
+def get_manifest_file_data(data_files, manifest_type):
+    for data_file in data_files:
+
+        data_file_as_string = data_file["content"].decode("utf-8")
+
+        if manifest_type in data_file_as_string:
+            manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+            return manifest_df
+
+    return None    
+
 class NDASubmissionFiles:
 
     ASSOCIATED_FILE = 'Submission Associated File'
@@ -645,18 +678,26 @@ class NDASubmissionFiles:
     SUBMISSION_TICKET = 'Submission Ticket'
     SUBMISSION_MEMENTO = 'Submission Memento'
 
-    def __init__(self, config, files):
+    logger = logging.getLogger('NDASubmissionFiles')
+    logger.setLevel(logging.INFO)
+
+    def __init__(self, config, files, collection_id, submission_id):
         self.config = config # ApplicationProperties().get_config
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
         self.headers = {'Accept': 'application/json'}
-
+        self.collection_id = collection_id
+        self.submission_id = submission_id
+        
         (self.associated_files,
          self.data_files,
          self.manifest_file,
          self.submission_package,
          self.submission_ticket,
          self.submission_memento) = self.get_nda_submission_file_types(files)
+        
+        self.bsmn_locations = [nda_bsmn_location(x, self.collection_id, self.submission_id) for x in files]
+
         self.debug = True
 
     def get_nda_submission_file_types(self, files):
@@ -694,63 +735,63 @@ class NDASubmissionFiles:
 
     def read_file(self, submission_file):
         download_url = submission_file['_links']['download']['href']
-        request = requests.get(
-            download_url,
-            auth=self.auth
-        )
+        request = requests.get(download_url, auth=self.auth)
+
         return request.content
 
+    def manifest_to_df(self, short_name):
+        """Read the contents of a data file of the type given by the short name.
+
+        Args:
+            short_name: An NDA short name for a manifest type (like 'genomics_sample03').
+        Returns:
+            Pandas data frame, or None if no data file found.
+        """
+        logger.warning("Information in the submission manifests may be out of date with respect to the NDA database.")
+
+        for data_file in self.data_files:
+            data_file_as_string = data_file['content'].decode('utf-8')
+            if short_name in data_file_as_string:
+                data = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                return data
+
+        return None
 
 class NDASubmission:
 
     _subject_manifest = "genomics_subject"
     _sample_manifest = "genomics_sample"
 
-    def __init__(self, config, submission_id=None, collection_id=None):
+    logger = logging.getLogger('NDASubmission')
+    logger.setLevel(logging.INFO)
+
+    def __init__(self, config, submission_id):
 
         self.config = config # ApplicationProperties().get_config
-        self.submission_api = self.config.get('submission.service.url')
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
-        self.headers = {'Accept': 'application/json'}
-        self.collection_id = collection_id
-        if collection_id:
-            self.submissions = get_submissions(auth=self.auth, 
-                                               collectionid = self.collection_id)
-        else:
-            self.submissions = [get_submission(auth=self.auth, submissionid=submission_id)]
-
+        self.submission_id = submission_id
+        self.submission = get_submission(auth=self.auth, submissionid=submission_id)
+        self.processed_submission = process_submissions(submission_data=self.submission)
         self.submission_files = self.get_submission_files()
-
+        self.guids = self.get_guids()
+        self.logger.info(f"Got submission {self.submission_id}.")
 
     def get_submission_files(self):
-        submission_files = []
-        for submission in self.submissions:
-            submission_id = submission['submission_id']            
-            collection_id = submission['collection']['id']
+        submission_id = self.submission['submission_id']            
+        collection_id = self.submission['collection']['id']
 
-            files = get_submission_files(auth=self.auth, submissionid=submission_id)
-            processed_files = process_submission_files(submission_files=files)
-            processed_files['submission_id'] = submission_id
-            processed_files['collection_id'] = collection_id
-            
-            submission_files.append({'files': NDASubmissionFiles(self.config, files),
-                                     'processed_files': processed_files,
-                                     'collection_id': collection_id,
-                                     'submission_id': submission_id})
+        files = get_submission_files(auth=self.auth, submissionid=submission_id)
+        processed_files = process_submission_files(submission_files=files)
+        processed_files['submission_id'] = submission_id
+        processed_files['collection_id'] = collection_id
+
+        submission_files = {'files': NDASubmissionFiles(self.config, files, collection_id, submission_id),
+                            'processed_files': processed_files,
+                            'collection_id': collection_id,
+                            'submission_id': submission_id}
+
         return submission_files
-
-    @staticmethod
-    def get_manifest_file_data(data_files, manifest_type):
-        for data_file in data_files:
-
-            data_file_as_string = data_file["content"].decode("utf-8")
-
-            if manifest_type in data_file_as_string:
-                manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                return manifest_df
-
-        return None    
 
 
     def get_guids(self):
@@ -760,27 +801,113 @@ class NDASubmission:
         It is prone to issues of being outdated due to submission edits. It 
 
         """
-        
+        logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
+
         guids = set()
-        for submission_file in self.submission_files:
-            submission_guids = set()
-            submission_id = submission_file['submission_id']
 
-            manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
-                                                      self._sample_manifest)
+        submission_data_files = self.submission_files["files"].data_files
+        manifest_df = get_manifest_file_data(submission_data_files, 
+                                             self._sample_manifest)
 
-            if manifest_df is None:
-                logger.debug(f"No {self._sample_manifest} manifest in this submission. Looking for the {self._subject_manifest} manifest.")
-                manifest_df = self.get_manifest_file_data(submission_file["files"].data_files, 
-                                                        self._subject_manifest)
+        if manifest_df is None:
+            self.logger.debug(f"No {self._sample_manifest} manifest for submission {self.submission_id}. Looking for the {self._subject_manifest} manifest.")
+            manifest_df = get_manifest_file_data(submission_data_files, 
+                                                 self._subject_manifest)
 
-            if manifest_df is not None:
-                for guid in manifest_df["subjectkey"].tolist():
-                    submission_guids.add((submission_id, guid))
+        if manifest_df is not None:
+            guids_found = manifest_df["subjectkey"].tolist()
+            self.logger.debug(f"Adding {len(guids_found)} GUIDS for submission {self.submission_id}.")
+            guids.update(guids_found)
+        else:
+            self.logger.info(f"No manifest with GUIDs found for submission {self.submission_id}")
+
+        return guids
+
+
+class NDACollection(object):
+
+    _subject_manifest = "genomics_subject"
+    _sample_manifest = "genomics_sample"
+
+    logger = logging.getLogger('NDACollection')
+    logger.setLevel(logging.INFO)
+
+    def __init__(self, config, collection_id=None):
+
+        self.config = config # ApplicationProperties().get_config
+        self.auth = (self.config.get('username'),
+                     self.config.get('password'))
+        self.collection_id = collection_id
+
+        self._collection_submissions = get_submissions(auth=self.auth, 
+                                                       collectionid = self.collection_id)
+
+        self.logger.info(f"Getting {len(self._collection_submissions)} submissions for collection {self.collection_id}.")
+        
+        self.submissions = [NDASubmission(config, submission_id=sub['submission_id']) for sub in self._collection_submissions]
+
+        self.submission_files = self.get_submission_files()
+        self.guids = self.get_guids()
+        self.logger.info(f"Got collection {self.collection_id}.")
+
+    def get_submission_files(self):
+        submission_files = []
+        for submission in self.submissions:
+            submission_files.extend(submission.submission_files)
+        return submission_files
+
+
+    def get_guids(self):
+        """Get a list of GUIDs for each submission from the genomics subject manifest data file.
+        
+        This requires looking inside the submission-associated data file to find the GUIDs.
+        It is prone to issues of being outdated due to submission edits. It 
+
+        """
+        logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
+
+        guids = set()
+        for submission in self.submissions:
+            guids.update(submission.guids)
+
+        return guids
+        
+    def get_collection_manifests(self, manifest_type):
+        """Get all original manifests submitted with each submission in a collection.
+
+        NDA does not update these files if metadata change requests are made.
+        They only update metadata in their database, accessible through the GUID API.
+        Records obtained here should be used for historical purposes only.
+
+        Args:
+            manifest_type: An NDA manifest type, like 'genomics_sample'.
+        Returns:
+            A pandas data frame of all submission manifests concatenated together.
+        """
+
+        logger.warning("Information in the collection manifests may be out of date.")
+        
+        all_data = []
+
+        for submission in self.submissions:
+            
+            try:
+                ndafiles = submission.submission_files['files']
+            except IndexError:
+                logger.info(f"No submission files for collection {coll_id}.")
+                continue
+
+            manifest_data = ndafiles.manifest_to_df(manifest_type)
+
+            if manifest_data is not None and manifest_data.shape[0] > 0:
+                manifest_data['collection_id'] = self.collection_id
+                manifest_data['submission_id'] = submission.submission_id
+                all_data.append(manifest_data)
             else:
-                logger.info(f"No manifest with GUIDs found for submission {submission_id}")
+                logger.info(f"No {manifest_type} data found for submission {submission.submission_id}.")
+        
+        if all_data:
+            all_data_df = pandas.concat(all_data, axis=0, ignore_index=True, sort=False)
+            return all_data_df
 
-            logger.debug(f"Adding {len(submission_guids)} GUIDS for submission {submission_id}.")
-            guids = guids.union(submission_guids)
-
-        return [{'submission_id': submission_id, "guid": guid} for submission_id, guid in guids]
+        return pandas.DataFrame()
