@@ -165,6 +165,7 @@ def main():
     # Run the data through the list of BSMN collection IDs since it is possible for
     # the samples to have been used in other consortia.
     # TODO (KD): think this can be removed with the new checks above.
+
     all_collections_df = pared_guids_df[pared_guids_df["collection_id"].isin(collection_id_list)]
     
     all_collections_df.to_csv(sys.stdout, mode='a', index=False)
