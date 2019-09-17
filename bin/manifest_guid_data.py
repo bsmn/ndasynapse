@@ -132,35 +132,36 @@ def main():
 
             # The documentation for the data structure is here:
             # https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
-            for ds_row in guid_data["age"][0]["dataStructureRow"]:
+            for age_row in guid_data["age"]:
+                for ds_row in age_row["dataStructureRow"]:
 
-                curr_collection_ids = get_collection_ids_from_links(data_structure_row=ds_row)
+                    curr_collection_ids = get_collection_ids_from_links(data_structure_row=ds_row)
 
-                # If the current collection ID we're interested in isn't in the current ids
-                # then we should keep going - this data is not relevant now!
-                if coll_id not in curr_collection_ids:
-                    continue
+                    # If the current collection ID we're interested in isn't in the current ids
+                    # then we should keep going - this data is not relevant now!
+                    if coll_id not in curr_collection_ids:
+                        continue
                 
-                manifest_data = dict()
+                    manifest_data = dict()
 
-                # Add the collection number to the manifest_data.
-                manifest_data["collection_id"] = coll_id
+                    # Add the collection number to the manifest_data.
+                    manifest_data["collection_id"] = coll_id
 
-                # Get all of the metadata
-                for de_row in ds_row["dataElement"]:
-                    manifest_data[de_row["name"]] = de_row["value"]
+                    # Get all of the metadata
+                    for de_row in ds_row["dataElement"]:
+                        manifest_data[de_row["name"]] = de_row["value"]
 
-                # Get the manifest data dictionary into a dataframe and flatten it out if necessary.
-                manifest_flat_df = pd.io.json.json_normalize(manifest_data)
-                all_guids_df = pd.concat([all_guids_df, manifest_flat_df], 
-                                         axis=0, ignore_index=True, sort=False)
+                    # Get the manifest data dictionary into a dataframe and flatten it out if necessary.
+                    manifest_flat_df = pd.io.json.json_normalize(manifest_data)
+                    all_guids_df = pd.concat([all_guids_df, manifest_flat_df], 
+                                             axis=0, ignore_index=True, sort=False)
 
-                # Get rid of any rows that are exact duplicates except for the manifest ID column
-                # (GENOMICS_SUBJECT02_ID, NICHD_BTB02_ID, GENOMICS_SAMPLE03_ID)
-                manifest_id = (args.manifest_type + "_id").upper()
-                all_guids_df.drop(manifest_id, axis=1, inplace=True)
-                column_list = (all_guids_df.columns).tolist()
-                pared_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
+                    # Get rid of any rows that are exact duplicates except for the manifest ID column
+                    # (GENOMICS_SUBJECT02_ID, NICHD_BTB02_ID, GENOMICS_SAMPLE03_ID)
+                    manifest_id = (args.manifest_type + "_id").upper()
+                    all_guids_df.drop(manifest_id, axis=1, inplace=True)
+                    column_list = (all_guids_df.columns).tolist()
+                    pared_guids_df = all_guids_df.drop_duplicates(subset=column_list, keep="first")
 
     # Run the data through the list of BSMN collection IDs since it is possible for
     # the samples to have been used in other consortia.
