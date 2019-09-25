@@ -75,7 +75,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None, 
                         help="Path to file containing NDA user credentials.")
-    parser_get_submissions.add_argument('--collection_id', type=int, nargs="+", help='NDA collection IDs.')
+    parser.add_argument('--collection_id', type=int, nargs="+", help='NDA collection IDs.')
     parser.add_argument("--manifest_type", type=str,
                         choices=["genomics_sample03", "genomics_subject02", "nichd_btb02"],
                         help="NDA manifest type.")
