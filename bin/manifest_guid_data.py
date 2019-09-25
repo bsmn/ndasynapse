@@ -75,10 +75,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None, 
                         help="Path to file containing NDA user credentials.")
-    parser.add_argument("--synapse_id", type=str, default=COLLECTION_ID_LOCATION,
-                        help="Synapse ID for the entity containing the collection ID")
-    parser.add_argument("--column_name", type=str, default=COLLECTION_ID_COLUMN,
-                        help="Column containing the collection ID")
+    parser_get_submissions.add_argument('--collection_id', type=int, nargs="+", help='NDA collection IDs.')
     parser.add_argument("--manifest_type", type=str,
                         choices=["genomics_sample03", "genomics_subject02", "nichd_btb02"],
                         help="NDA manifest type.")
@@ -96,15 +93,8 @@ def main():
 
     auth = ndasynapse.nda.authenticate(config)
 
-    syn_table_query = f'SELECT distinct "{args.column_name}" from {args.synapse_id}'
-    table_results_df = syn.tableQuery(syn_table_query).asDataFrame()
-
-    # The link to the NDA collection will have a format similar to
-    # https://ndar.nih.gov/edit_collection.html?id=<NDA collection ID>
-    collection_id_list = table_results_df[args.column_name].tolist()
-    
-    collection_id_list = collection_id_list
-    
+    collection_id_list = args.collection_id
+        
     logger.debug(collection_id_list)
 
     for coll_id in collection_id_list:
