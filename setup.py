@@ -1,7 +1,14 @@
+import os
 from setuptools import setup
 
+# determine the version
+about = {}
+here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(here, "ndasynapse", "__version__.py")) as f:
+    exec(f.read(), about)
+
 setup(name='ndasynapse',
-      version='0.3.0',
+      version=about['__version__'],
       description='NDA to Synapse sync',
       url='http://github.com/bsmn/ndasynapse',
       author='Kenneth Daily',

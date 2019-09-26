@@ -128,6 +128,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--version", action="store_true", default=False, help="Print version.")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--json", action="store_true", default=False, help="Output in JSON format, if possible. Default is to output in CSV format.")
 
@@ -180,6 +181,10 @@ def main():
     parser_get_collection_manifest.set_defaults(func=get_collection_manifests)
 
     args = parser.parse_args()
+
+    if args.version:
+        print(ndasynapse.__version__)
+        sys.exit()
 
     logger.info(args.config)
     
