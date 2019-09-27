@@ -118,12 +118,13 @@ def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
         subjectkey: An NDA GUID (Globally Unique Identifier)
-        short_name: The data structure to return data for (e.g., genomics_sample03)
+        short_name: The data structure to return data for 
+                    (e.g., genomics_sample03)
     Returns:
         dict from JSON format.
     """
 
-    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}",
+    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}", # pylint: disable=line-too-long
                      auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug(f"Request {r} for GUID {subjectkey}")
@@ -170,7 +171,7 @@ def get_tissues(auth, guid):
         guid: An NDA GUID (also called the subjectkey).
     Returns:
         Data in JSON format.
-    
+
     """
 
     return get_guid_data(auth=auth, subjectkey=guid, short_name="nichd_btb02")
@@ -200,18 +201,22 @@ def get_submission(auth, submissionid: int) -> dict:
 
 def get_submissions(auth, collectionid, status="Upload Completed", users_own_submissions=False):
     """Use the NDA Submission API to get submissions from a NDA collection.
+
+    This is a separate service to get submission in batch that are related to a
+    collection or a user.
     
-    This is a separate service to get submission in batch that are related to a collection or a user.
     See `get_submission` to get a single submission by submission ID.
 
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
-        collectionid: An NDA collection ID or a list of NDA collection IDs. If None, gets all submissions.
+        collectionid: An NDA collection ID or a list of NDA collection IDs.
+                      If None, gets all submissions.
         status: Status of submissions to retrieve. If None, gets all submissions.
-        users_own_submissions: Return only user's own submissions. If False, must pass collection ID(s).
+        users_own_submissions: Return only user's own submissions.
+                               If False, must pass collection ID(s).
     Returns:
         dict from JSON format.
-        
+
     """
 
     if isinstance(collectionid, (list,)):
@@ -232,8 +237,9 @@ def get_submissions(auth, collectionid, status="Upload Completed", users_own_sub
         return None
 
 
-def get_submission_files(auth, submissionid:int, submission_file_status:str="Complete", 
-                         retrieve_files_to_upload:bool=False) -> dict:
+def get_submission_files(auth, submissionid: int,
+                         submission_file_status: str="Complete",
+                         retrieve_files_to_upload: bool=False) -> dict:
     """Use the NDA Submission API to get files for an NDA submission.
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
@@ -245,7 +251,7 @@ def get_submission_files(auth, submissionid:int, submission_file_status:str="Com
 
     """
 
-    r = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}/files",
+    r = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}/files", # pylint: disable=line-too-long
                      params={'submissionFileStatus': submission_file_status,
                              'retrieveFilesToUpload': retrieve_files_to_upload},
                      auth=auth, headers={'Accept': 'application/json'})
@@ -263,7 +269,8 @@ def get_experiment(auth, experimentid: int, verbose=False) -> dict:
     """Use the NDA Experiment API to get an experiment.
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
-        experimentid: An NDA collection ID or a list of NDA collection IDs. If None, gets all submissions.
+        experimentid: An NDA collection ID or a list of NDA collection IDs.
+                      If None, gets all submissions.
     Returns:
         dict from JSON format.
     """
@@ -280,13 +287,14 @@ def get_experiment(auth, experimentid: int, verbose=False) -> dict:
         return None
 
 def process_submissions(submission_data):
-    """Process NDA submissions from a dictionary of data from the NDA Submission API.
-    
-    The specific NDA API is the root submission endpoint that gets submissions from specific
-    collections.
+    """Process NDA submissions from the NDA Submission API.
+
+    The specific NDA API is the root submission endpoint that gets submissions
+    from specific collections.
 
     Args:
-        submission_data: Dictionary of data from NDA Submission API, or from ndasynapse.nda.get_submissions
+        submission_data: Dictionary of data from NDA Submission API,
+                         or from ndasynapse.nda.get_submissions
     Returns:
         Pandas data frame with submission information.
     """
@@ -298,9 +306,11 @@ def process_submissions(submission_data):
     if not isinstance(submission_data, (list,)):
         submission_data = [submission_data]
     
-    submissions =  [dict(collectionid=x['collection']['id'], collectiontitle=x['collection']['title'],
-                         submission_id=x['submission_id'], submission_status=x['submission_status'],
-                         dataset_title=x['dataset_title']) for x in submission_data]
+    submissions = [dict(collectionid=x['collection']['id'], 
+                        collectiontitle=x['collection']['title'],
+                        submission_id=x['submission_id'], 
+                        submission_status=x['submission_status'],
+                        dataset_title=x['dataset_title']) for x in submission_data] # pylint: disable=line-too-long
 
     return pandas.DataFrame(submissions)
 
@@ -315,7 +325,8 @@ def nda_bsmn_location(fileobj, collection_id, submission_id):
     original_key = (fileobj['file_remote_path']
                     .split('//')[1]
                     .split('/', 1)[1]
-                    .replace('ndar_data/DataSubmissions', 'submission_{}/ndar_data/DataSubmissions'.format(submission_id))
+                    .replace('ndar_data/DataSubmissions',
+                             'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
                     )
     nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
     return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
@@ -324,8 +335,9 @@ def process_submission_files(submission_files):
 
     submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], 
                                        file_remote_path=x['file_remote_path'],
-                                       status=x['status'], md5sum=x['md5sum'], size=x['size'],
-                                       created_date=x['created_date'], modified_date=x['modified_date']) for x in submission_files]
+                                       status=x['status'], md5sum=x['md5sum'], 
+                                       size=x['size'], created_date=x['created_date'],
+                                       modified_date=x['modified_date']) for x in submission_files] # pylint: disable=line-too-long
 
     return pandas.DataFrame(submission_files_processed)
 
@@ -343,7 +355,7 @@ def get_collection_ids_from_links(data_structure_row: dict) -> set:
     for link_row in data_structure_row["links"]["link"]:
         if link_row["rel"].lower() == "collection":
             curr_collection_ids.add(int(link_row["href"].split("=")[1]))
-    
+
     if len(curr_collection_ids) > 1:
         logger.warn(f"Found different collection ids: {curr_collection_ids}")
 
@@ -357,17 +369,18 @@ def sample_data_files_to_df(guid_data):
 
         collection_id = get_collection_ids_from_links(row).pop()
         dataset_id = row['datasetId']
-        tmp_row_dict = {'collection_id': collection_id, 'datasetId': dataset_id}
+        tmp_row_dict = {'collection_id': collection_id, 
+                        'datasetId': dataset_id}
 
         for col in row['dataElement']:
             tmp_row_dict[col['name']] = col['value']
-            if col.get('md5sum') and col.get('size') and col['name'].startswith('DATA_FILE'):
+            if col.get('md5sum') and col.get('size') and \
+                col['name'].startswith('DATA_FILE'):
                 tmp_row_dict["%s_md5sum" % (col['name'], )] = col['md5sum']
                 tmp_row_dict["%s_size" % (col['name'], )] = col['size']
         tmp.append(tmp_row_dict)
 
     samples = pandas.io.json.json_normalize(tmp)
-    # samples['datasetId'] = [x['datasetId'] for x in guid_data['age'][0]['dataStructureRow']]
 
     return samples
 
@@ -376,13 +389,14 @@ def process_samples(samples):
     colnames_lower = [x.lower() for x in samples.columns.tolist()]
     samples.columns = colnames_lower
 
-    datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist()
+    datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist() # pylint: disable=line-too-long
 
     samples_final = pandas.DataFrame()
-    sample_columns = [column for column in samples.columns.tolist() if not column.startswith("data_file")]
-    
+    sample_columns = [col for col in samples.columns.tolist() if not col.startswith("data_file")] # pylint: disable=line-too-long
+
     for col in datafile_column_names:
-        keep_cols = sample_columns + [col, f'{col}_type', f'{col}_md5sum', f'{col}_size']
+        keep_cols = sample_columns + \
+            [col, f'{col}_type', f'{col}_md5sum', f'{col}_size']
         samples_tmp = samples[keep_cols]
 
         samples_tmp.rename(columns={col: 'data_file',
@@ -391,14 +405,15 @@ def process_samples(samples):
                                     f'{col}_size': 'size'},
                            inplace=True)
 
-        samples_final = pandas.concat([samples_final, samples_tmp], ignore_index=True)
+        samples_final = pandas.concat([samples_final, samples_tmp], 
+                                      ignore_index=True)
 
     missing_data_file = samples_final.data_file.isnull()
 
-    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist()
+    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist() # pylint: disable=line-too-long
 
     if missing_files:
-        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,))
+        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,)) # pylint: disable=line-too-long
         samples_final = samples_final[~missing_data_file]
     
     samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
@@ -406,14 +421,16 @@ def process_samples(samples):
                                         inplace=True)
 
     # Remove initial slash to match what is in manifest file
-    samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)
+    samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value) # pylint: disable=line-too-long
 
     # Remove stuff that isn't part of s3 path
-    samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") for x in samples_final.data_file.tolist()]
+    samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") # pylint: disable=line-too-long
+                               for x in samples_final.data_file.tolist()]
 
     samples_final = samples_final[samples_final.data_file != 'nan']
 
-    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'], ['Human'])
+    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'], 
+                                                              ['Human'])
 
     # df.drop(["organism"], axis=1, inplace=True)
 
@@ -451,7 +468,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     try:
         df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
     except KeyError as e:
-        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}")
+        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}") # pylint: disable=line-too-long
         logger.error(f"Trying to use 'gender' and add new 'sex' column.")
         df['sex'] = df['gender'].replace(['M', 'F'], ['male', 'female'])
         # df = df.drop(labels='gender', axis=1, inplace=True)
