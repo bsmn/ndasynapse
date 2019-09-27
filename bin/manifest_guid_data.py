@@ -30,6 +30,7 @@ manifest_guid_data.py --config <NDA credentials file>
 """
 
 import argparse
+import csv
 import json
 import logging
 import requests
@@ -156,7 +157,7 @@ def main():
     # TODO (KD): think this can be removed with the new checks above.
     all_collections_df = all_guids_df # [all_guids_df["collection_id"].isin(collection_id_list)]
     
-    all_collections_df.to_csv(sys.stdout, index=False)
+    all_collections_df.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
 
 if __name__ == "__main__":
     main()

@@ -19,7 +19,7 @@ pandas.options.display.max_colwidth = 1000
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # ch = logging.StreamHandler()
 # ch.setLevel(logging.DEBUG)
@@ -290,6 +290,10 @@ def process_submissions(submission_data):
     Returns:
         Pandas data frame with submission information.
     """
+
+    if submission_data is None:
+        logger.debug("No submission data to process.")
+        return pandas.DataFrame()
 
     if not isinstance(submission_data, (list,)):
         submission_data = [submission_data]
@@ -686,8 +690,8 @@ class NDASubmissionFiles:
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
         self.headers = {'Accept': 'application/json'}
-        self.collection_id = collection_id
-        self.submission_id = submission_id
+        self.collection_id = str(collection_id)
+        self.submission_id = str(submission_id)
         
         (self.associated_files,
          self.data_files,
@@ -770,16 +774,23 @@ class NDASubmission:
         self.config = config # ApplicationProperties().get_config
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
-        self.submission_id = submission_id
+        self.submission_id = str(submission_id)
         self.submission = get_submission(auth=self.auth, submissionid=submission_id)
-        self.processed_submission = process_submissions(submission_data=self.submission)
-        self.submission_files = self.get_submission_files()
-        self.guids = self.get_guids()
-        self.logger.info(f"Got submission {self.submission_id}.")
+
+        if self.submission is None:
+            self.logger.error(f"Could not retrieve submission {self.submission_id}.")
+            self.processed_submissions = None
+            self.submission_files = None
+            self.guids = set()
+        else:
+            self.processed_submission = process_submissions(submission_data=self.submission)
+            self.submission_files = self.get_submission_files()
+            self.guids = self.get_guids()
+            self.logger.info(f"Got submission {self.submission_id}.")
 
     def get_submission_files(self):
-        submission_id = self.submission['submission_id']            
-        collection_id = self.submission['collection']['id']
+        submission_id = str(self.submission['submission_id'])
+        collection_id = str(self.submission['collection']['id'])
 
         files = get_submission_files(auth=self.auth, submissionid=submission_id)
         processed_files = process_submission_files(submission_files=files)
@@ -815,9 +826,12 @@ class NDASubmission:
                                                  self._subject_manifest)
 
         if manifest_df is not None:
-            guids_found = manifest_df["subjectkey"].tolist()
-            self.logger.debug(f"Adding {len(guids_found)} GUIDS for submission {self.submission_id}.")
-            guids.update(guids_found)
+            try:
+                guids_found = manifest_df["subjectkey"].tolist()
+                self.logger.debug(f"Adding {len(guids_found)} GUIDS for submission {self.submission_id}.")
+                guids.update(guids_found)
+            except KeyError:
+                self.logger.error(f"Manifest for submission {self.submission_id} had no guid (subjectkey) column.")
         else:
             self.logger.info(f"No manifest with GUIDs found for submission {self.submission_id}")
 
@@ -837,14 +851,14 @@ class NDACollection(object):
         self.config = config # ApplicationProperties().get_config
         self.auth = (self.config.get('username'),
                      self.config.get('password'))
-        self.collection_id = collection_id
+        self.collection_id = str(collection_id)
 
         self._collection_submissions = get_submissions(auth=self.auth, 
                                                        collectionid = self.collection_id)
 
         self.logger.info(f"Getting {len(self._collection_submissions)} submissions for collection {self.collection_id}.")
         
-        self.submissions = [NDASubmission(config, submission_id=sub['submission_id']) for sub in self._collection_submissions]
+        self.submissions = [NDASubmission(config, submission_id=sub['submission_id']) for sub in self._collection_submissions if sub is not None]
 
         self.submission_files = self.get_submission_files()
         self.guids = self.get_guids()
@@ -853,7 +867,8 @@ class NDACollection(object):
     def get_submission_files(self):
         submission_files = []
         for submission in self.submissions:
-            submission_files.extend(submission.submission_files)
+            if submission.submission_files is not None:
+                submission_files.extend(submission.submission_files)
         return submission_files
 
 
@@ -900,8 +915,8 @@ class NDACollection(object):
             manifest_data = ndafiles.manifest_to_df(manifest_type)
 
             if manifest_data is not None and manifest_data.shape[0] > 0:
-                manifest_data['collection_id'] = self.collection_id
-                manifest_data['submission_id'] = submission.submission_id
+                manifest_data['collection_id'] = str(self.collection_id)
+                manifest_data['submission_id'] = str(submission.submission_id)
                 all_data.append(manifest_data)
             else:
                 logger.info(f"No {manifest_type} data found for submission {submission.submission_id}.")
