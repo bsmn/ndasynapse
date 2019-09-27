@@ -15,6 +15,7 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
@@ -34,8 +35,6 @@ NDA_BUCKET_NAME = 'nda-bsmn'
 # Synapse configuration
 storage_location_id = '9209'
 PROJECT_ID = 'syn5902559'
-UUID_COLUMNS = ['sample_id_biorepository', 'sample_id_original',
-                'experiment_id', 'datasetid']
 
 def main():
 
@@ -47,8 +46,6 @@ def main():
     parser.add_argument("--guids", type=str, default=REFERENCE_GUID, nargs="+",
                         help="GUID to search for. [default: %(default)s]")
     parser.add_argument("--get_experiments", action="store_true", default=False)
-    parser.add_argument("--synapse_data_folder", nargs=1)
-    parser.add_argument("--uuid_columns", type=str, default=None)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
     parser.add_argument("--config", type=str, default=None)
 
@@ -68,15 +65,15 @@ def main():
     
     for guid in args.guids:
         samples_guid = ndasynapse.nda.get_samples(auth, guid=guid)
-        samples_guid = ndasynapse.nda.get_sample_data_files(samples_guid)
+        logger.debug(f"Got {len(samples_guid)} samples for {guid}")
+        samples_guid = ndasynapse.nda.sample_data_files_to_df(samples_guid)
 
-        logging.debug("Got samples for %s" % guid)
-        
         # exclude some experiments
         samples_guid = ndasynapse.nda.process_samples(samples_guid)
 
         # TEMPORARY FIXES - NEED TO BE ADJUSTED AT NDA
         try:
+            logger.debug("Fixing Salk site samples still. Check with NDA to confirm change.")
             samples_guid.loc[samples_guid['site'] == 'Salk', 'site'] = 'U01MH106882'
         except KeyError:
             pass
@@ -116,7 +113,7 @@ def main():
             expts = ndasynapse.nda.process_experiments(expts)
             expts = expts.drop_duplicates()
 
-            logger.info("Experiments processed: %s" % (expts,))
+            logger.info(f"{expts.shape[0]} experiments found.")
             metadata = metadata.merge(expts, how="left", left_on="experiment_id",
                                       right_on="experiment_id")
             logger.info("Retrieved experiments.")
