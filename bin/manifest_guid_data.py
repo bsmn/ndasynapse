@@ -32,6 +32,7 @@ import argparse
 import csv
 import json
 import logging
+import multiprocessing
 import sys
 
 import pandas as pd
@@ -71,18 +72,19 @@ def get_collection_ids_from_links(data_structure_row: dict) -> set:
 
 def main():
     """Entry into CLI.
-    
     """
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None, 
                         help="Path to file containing NDA user credentials.")
-    parser.add_argument('--collection_id', type=int, nargs="+", 
+    parser.add_argument('--collection_id', type=int, nargs="+",
                         help='NDA collection IDs.')
     parser.add_argument("--manifest_type", type=str,
                         choices=["genomics_sample03", "genomics_subject02", 
                                  "nichd_btb02"],
                         help="NDA manifest type.")
+    parser.add_argument("--parallel", type=int, default=4,
+                        help="Run in parallel threads.")
 
     args = parser.parse_args()
 
@@ -98,23 +100,22 @@ def main():
 
     logger.debug(collection_id_list)
 
-    for coll_id in collection_id_list:
+    pool = multiprocessing.dummy.Pool(args.parallel)
 
-        # The NDASubmission class returns a list of dictionaries,
-        # with each dictionary including the file content (['files']),
-        # the collection ID (['collection_id']), and the
-        # submission ID (['submission_id']).
+    guid_worker = lambda guid: ndasynapse.nda.get_guid_data(
+            auth=auth, subjectkey=guid,
+            short_name=args.manifest_type)
 
-        nda_collection = ndasynapse.nda.NDACollection(nda_config, 
-                                                      collection_id=coll_id)
+    collection_worker = lambda coll_id: ndasynapse.nda.NDACollection(nda_config, 
+                                                                     collection_id=coll_id)
 
-        # Cycle through the guids and query for the specified manifest type.
-        for guid in nda_collection.guids:
+    collections = pool.map(collection_worker, collection_id_list)
+    
+    for nda_collection in collections:
+        coll_id = nda_collection.collection_id
+        guid_data_list = pool.map(guid_worker, nda_collection.guids)
 
-            guid_data = ndasynapse.nda.get_guid_data(
-                auth=auth, subjectkey=guid,
-                short_name=args.manifest_type)
-
+        for (guid, guid_data) in zip(nda_collection.guids, guid_data_list):
             # It is possible for there to be no data for the specified
             # manifest type. If this is the case, the GUID API will return an
             # OK status (status_code = 200) and an empty data structure, which
@@ -128,8 +129,8 @@ def main():
             # https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
             for ds_row in guid_data["age"][0]["dataStructureRow"]:
 
-                curr_collection_ids = get_collection_ids_from_links(
-                    data_structure_row=ds_row)
+                curr_collection_ids = [str(x) for x in get_collection_ids_from_links(
+                    data_structure_row=ds_row)]
 
                 # If the current collection ID we're interested in isn't in
                 #  the current ids then we should keep going - this data is 
