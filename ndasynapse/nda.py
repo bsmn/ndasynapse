@@ -875,8 +875,15 @@ class NDACollection(object):
 
         self.logger.info(f"Getting {len(self._collection_submissions)} submissions for collection {self.collection_id}.")
         
-        self.submissions = [NDASubmission(config, submission_id=sub['submission_id']) for sub in self._collection_submissions if sub is not None]
+        self.submissions = []
 
+        for coll_sub in self._collection_submissions:
+            if coll_sub is not None:
+                sub = NDASubmission(config,
+                                    submission_id=coll_sub['submission_id'])
+                if sub.submission is not None:
+                    self.submissions.append(sub)
+            
         self.submission_files = self.get_submission_files()
         self.guids = self.get_guids()
         self.logger.info(f"Got collection {self.collection_id}.")
@@ -922,10 +929,10 @@ class NDACollection(object):
         all_data = []
 
         for submission in self.submissions:
-            
+            logger.debug(f"Getting manifests for submission {submission.submission_id}")
             try:
                 ndafiles = submission.submission_files['files']
-            except IndexError:
+            except (IndexError, TypeError):
                 logger.info(f"No submission files for collection {coll_id}.")
                 continue
 
