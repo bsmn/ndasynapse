@@ -49,18 +49,18 @@ COLLECTION_ID_COLUMN = "nda_collection_id"
 
 SUBJECT_MANIFEST = "genomics_subject"
 
-def get_collection_ids_from_links(data_structure_row: dict) -> set:
+def get_collection_ids_from_links(row: dict) -> set:
     """Get collection IDs from a data structure row from the NDA GUID API.
 
     Args:
-        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+        row: a dictionary from the JSON returned by the NDA GUID data API.
     Returns:
         a set of collection IDs as integers.
 
     """
 
     curr_collection_ids = set()
-    for link_row in data_structure_row["links"]["link"]:
+    for link_row in row["links"]["link"]:
         if link_row["rel"].lower() == "collection":
             curr_collection_ids.add(int(link_row["href"].split("=")[1]))
 
@@ -75,12 +75,12 @@ def main():
     """
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default=None, 
+    parser.add_argument("--config", type=str, default=None,
                         help="Path to file containing NDA user credentials.")
     parser.add_argument('--collection_id', type=int, nargs="+",
                         help='NDA collection IDs.')
     parser.add_argument("--manifest_type", type=str,
-                        choices=["genomics_sample03", "genomics_subject02", 
+                        choices=["genomics_sample03", "genomics_subject02",
                                  "nichd_btb02"],
                         help="NDA manifest type.")
     parser.add_argument("--parallel", type=int, default=4,
@@ -92,7 +92,6 @@ def main():
 
     with open(args.config) as config_file:
         config = json.load(config_file)
-        nda_config = config['nda']
 
     auth = ndasynapse.nda.authenticate(config)
 
@@ -103,14 +102,14 @@ def main():
     pool = multiprocessing.dummy.Pool(args.parallel)
 
     guid_worker = lambda guid: ndasynapse.nda.get_guid_data(
-            auth=auth, subjectkey=guid,
-            short_name=args.manifest_type)
+        auth=auth, subjectkey=guid,
+        short_name=args.manifest_type)
 
-    collection_worker = lambda coll_id: ndasynapse.nda.NDACollection(nda_config, 
+    collection_worker = lambda coll_id: ndasynapse.nda.NDACollection(auth=auth,
                                                                      collection_id=coll_id)
 
     collections = pool.map(collection_worker, collection_id_list)
-    
+
     for nda_collection in collections:
         coll_id = nda_collection.collection_id
         guid_data_list = pool.map(guid_worker, nda_collection.guids)
@@ -121,7 +120,7 @@ def main():
             # OK status (status_code = 200) and an empty data structure, which
             # will cause the code to crash further down, so check to make sure
             # that the data structure is not empty before continuing.
-            if guid_data is None or len(guid_data["age"]) == 0:
+            if guid_data is None or not guid_data["age"]:
                 logger.debug(f"No data for guid {guid}")
                 continue
 
@@ -129,11 +128,11 @@ def main():
             # https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
             for ds_row in guid_data["age"][0]["dataStructureRow"]:
 
-                curr_collection_ids = [str(x) for x in get_collection_ids_from_links(
-                    data_structure_row=ds_row)]
+                curr_collection_ids = get_collection_ids_from_links(row=ds_row)
+                curr_collection_ids = [str(x) for x in curr_collection_ids]
 
                 # If the current collection ID we're interested in isn't in
-                #  the current ids then we should keep going - this data is 
+                #  the current ids then we should keep going - this data is
                 # not relevant now!
                 if coll_id not in curr_collection_ids:
                     continue
@@ -147,24 +146,24 @@ def main():
                 for de_row in ds_row["dataElement"]:
                     manifest_data[de_row["name"]] = de_row["value"]
 
-                # Get the manifest data dictionary into a dataframe and 
+                # Get the manifest data dictionary into a dataframe and
                 # flatten it out if necessary.
                 manifest_flat_df = pd.io.json.json_normalize(manifest_data)
-                all_guids_df = pd.concat([all_guids_df, manifest_flat_df], 
+                all_guids_df = pd.concat([all_guids_df, manifest_flat_df],
                                          axis=0, ignore_index=True, sort=False)
 
-                # Get rid of any rows that are exact duplicates except for 
+                # Get rid of any rows that are exact duplicates except for
                 # the manifest ID column
                 # (GENOMICS_SUBJECT02_ID, NICHD_BTB02_ID, GENOMICS_SAMPLE03_ID)
                 manifest_id = (args.manifest_type + "_id").upper()
                 all_guids_df.drop(manifest_id, axis=1, inplace=True)
                 column_list = (all_guids_df.columns).tolist()
-                all_guids_df = all_guids_df.drop_duplicates(subset=column_list, 
+                all_guids_df = all_guids_df.drop_duplicates(subset=column_list,
                                                             keep="first")
 
     all_collections_df = all_guids_df
 
-    all_collections_df.to_csv(sys.stdout, index=False, 
+    all_collections_df.to_csv(sys.stdout, index=False,
                               quoting=csv.QUOTE_NONNUMERIC)
 
 if __name__ == "__main__":
