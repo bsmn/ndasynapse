@@ -15,39 +15,40 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-def get_guid(auth, args, config=None):
+def get_guid(auth, args):
     guids = ndasynapse.nda.get_guid(auth, args.guid)
 
-def get_collection_submissions(auth, args, config=None):
+def get_collection_submissions(auth, args):
     logger.debug("collectionids = {collection_id}".format(collection_id=args.collection_id))
-    submissions = ndasynapse.nda.get_submissions(auth, collectionid=[str(x) for x in args.collection_id])
+    submissions = ndasynapse.nda.get_submissions(auth=auth, 
+                                                 collectionid=[str(x) for x in args.collection_id])
     submissions_processed = ndasynapse.nda.process_submissions(submissions)
 
     submissions_processed.to_csv(sys.stdout, index=False)
 
-def get_submission(auth, args, config=None):
-    submission = ndasynapse.nda.NDASubmission(config, submission_id=args.submission_id)
+def get_submission(auth, args):
+    submission = ndasynapse.nda.NDASubmission(auth=auth, submission_id=args.submission_id)
     if args.json:
         sys.stdout.write(json.dumps(submission.submission, indent=2))
     else:
         submission.processed_submission.to_csv(sys.stdout, index=False)
 
-def get_submission_files(auth, args, config=None):
-    submission = ndasynapse.nda.get_submission_files(auth, submissionid=args.submission_id)
+def get_submission_files(auth, args):
+    submission = ndasynapse.nda.get_submission_files(auth=auth,
+                                                     submissionid=args.submission_id)
     submissions_processed = ndasynapse.nda.process_submission_files(submission)
     submissions_processed.to_csv(sys.stdout, index=False)
 
-def get_collection_submission_files(auth, args, config=None):
-    nda_collection = ndasynapse.nda.NDACollection(config=config,
-                                                  collection_id=args.collection_id)
+def get_collection_submission_files(auth, args):
+    nda_collection = ndasynapse.nda.NDACollection(auth=auth,
+                                                  collection_id=args.collection_id) # pylint: disable:line-too-long
     
-
-    sub_files =  [sub.submission_files['processed_files'] for sub in nda_collection.submissions] # pylint: disable:line-too-long
+    sub_files = [sub.submission_files['processed_files'] for sub in nda_collection.submissions] # pylint: disable:line-too-long
     submission_files_processed = pandas.concat(sub_files)
     submission_files_processed.to_csv(sys.stdout, index=False)
 
 
-def get_experiments(auth, args, config=None):
+def get_experiments(auth, args):
     data = ndasynapse.nda.get_experiments(auth,
                                            args.experiment_id)
     
@@ -58,7 +59,7 @@ def get_experiments(auth, args, config=None):
         data = data.drop_duplicates()
         data.to_csv(sys.stdout, index=False)
 
-def get_samples(auth, args, config=None):
+def get_samples(auth, args):
     data = ndasynapse.nda.get_samples(auth=auth, guid=args.guid)
 
     if args.json:
@@ -68,7 +69,7 @@ def get_samples(auth, args, config=None):
         data_df = ndasynapse.nda.process_samples(data_df)
         data_df.to_csv(sys.stdout, index=False)
 
-def get_subjects(auth, args, config=None):
+def get_subjects(auth, args):
     data = ndasynapse.nda.get_subjects(auth=auth, guid=args.guid)
 
     if args.json:
@@ -80,12 +81,12 @@ def get_subjects(auth, args, config=None):
 
 _guid_fieldnames = ['submission_id', 'guid']
 
-def get_collection_guids(auth, args, config=None):
-    nda_collection = ndasynapse.nda.NDACollection(config, collection_id=args.collection_id)
+def get_collection_guids(auth, args):
+    nda_collection = ndasynapse.nda.NDACollection(auth=auth, collection_id=args.collection_id)
     guids = [str(guid) for guid in nda_collection.guids]
     sys.stdout.write("\n".join(guids))
 
-def get_collection_manifests(auth, args, config=None):
+def get_collection_manifests(auth, args):
     """Get all original manifests submitted with each submission in a collection.
 
     NDA does not update these files if metadata change requests are made.
@@ -95,7 +96,6 @@ def get_collection_manifests(auth, args, config=None):
     Args:
         auth: a requests.auth.HTTPBasicAuth object authenticating to NDA.
         args: arpgarse arguments
-        config: optional configuration file that has NDA endpoint information.
     Returns:
         Output to stdout in CSV format of all submission manifests concatenated together.
     """
@@ -103,13 +103,15 @@ def get_collection_manifests(auth, args, config=None):
     all_data = []
 
     for collection_id in args.collection_id:
-        nda_collection = ndasynapse.nda.NDACollection(config, collection_id=collection_id)
+        nda_collection = ndasynapse.nda.NDACollection(auth=auth, 
+                                                      collection_id=collection_id)
 
         manifest_data = nda_collection.get_collection_manifests(manifest_type=args.manifest_type)
         all_data.append(manifest_data)
-    
+
     if all_data:
-        all_data_df = pandas.concat(all_data, axis=0, ignore_index=True, sort=False)
+        all_data_df = pandas.concat(all_data, axis=0, 
+                                    ignore_index=True, sort=False)
         all_data_df.to_csv(sys.stdout, index=False)
 
     
@@ -119,18 +121,24 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
-    parser.add_argument("--version", action="store_true", default=False, help="Print version.")
+    parser.add_argument("--version", action="store_true", 
+                        default=False, help="Print version.")
     parser.add_argument("--config", type=str, default=None)
-    parser.add_argument("--json", action="store_true", default=False, help="Output in JSON format, if possible. Default is to output in CSV format.")
+    parser.add_argument("--json", action="store_true", default=False,
+                        help="Output in JSON format, if possible. Default is to output in CSV format.")
 
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_get_samples = subparsers.add_parser('get-samples', help='Get samples from NDA.')
-    parser_get_samples.add_argument('--guid', type=str, help='NDA subject key (GUID).')
+    parser_get_samples = subparsers.add_parser('get-samples',
+                                               help='Get samples from NDA.')
+    parser_get_samples.add_argument('--guid', type=str, 
+                                    help='NDA subject key (GUID).')
     parser_get_samples.set_defaults(func=get_samples)
 
-    parser_get_subjects = subparsers.add_parser('get-subjects', help='Get subjects from NDA.')
-    parser_get_subjects.add_argument('--guid', type=str, help='NDA subject key (GUID).')
+    parser_get_subjects = subparsers.add_parser('get-subjects',
+                                                help='Get subjects from NDA.')
+    parser_get_subjects.add_argument('--guid', type=str,
+                                     help='NDA subject key (GUID).')
     parser_get_subjects.set_defaults(func=get_subjects)
 
     parser_get_experiments = subparsers.add_parser('get-experiments', help='Get experiments from NDA.')
@@ -176,14 +184,12 @@ def main():
     if args.version:
         print(ndasynapse.__version__)
         sys.exit()
-
-    logger.info(args.config)
     
     config = json.load(open(args.config))
     auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
     
-    args.func(auth, args, config=config['nda'])
+    args.func(auth, args)
 
 
 if __name__ == "__main__":
