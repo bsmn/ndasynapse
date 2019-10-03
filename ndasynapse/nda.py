@@ -702,10 +702,8 @@ class NDASubmissionFiles:
     logger = logging.getLogger('NDASubmissionFiles')
     logger.setLevel(logging.INFO)
 
-    def __init__(self, config, files, collection_id, submission_id):
-        self.config = config # ApplicationProperties().get_config
-        self.auth = (self.config.get('username'),
-                     self.config.get('password'))
+    def __init__(self, auth, files, collection_id, submission_id):
+        self.auth = auth
         self.headers = {'Accept': 'application/json'}
         self.collection_id = str(collection_id)
         self.submission_id = str(submission_id)
@@ -786,11 +784,9 @@ class NDASubmission:
     logger = logging.getLogger('NDASubmission')
     logger.setLevel(logging.INFO)
 
-    def __init__(self, config, submission_id):
+    def __init__(self, auth, submission_id):
 
-        self.config = config # ApplicationProperties().get_config
-        self.auth = (self.config.get('username'),
-                     self.config.get('password'))
+        self.auth = auth
         self.submission_id = str(submission_id)
         self.submission = get_submission(auth=self.auth, submissionid=submission_id)
 
@@ -809,17 +805,21 @@ class NDASubmission:
         submission_id = str(self.submission['submission_id'])
         collection_id = str(self.submission['collection']['id'])
 
-        files = get_submission_files(auth=self.auth, submissionid=submission_id)
+        files = get_submission_files(auth=self.auth,
+                                     submissionid=submission_id)
         processed_files = process_submission_files(submission_files=files)
         processed_files['submission_id'] = submission_id
         processed_files['collection_id'] = collection_id
 
-        submission_files = {'files': NDASubmissionFiles(self.config, files, collection_id, submission_id),
-                            'processed_files': processed_files,
-                            'collection_id': collection_id,
-                            'submission_id': submission_id}
+        sub_files = {'files': NDASubmissionFiles(auth=self.auth,
+                                                 files=files,
+                                                 collection_id=collection_id,
+                                                 submission_id=submission_id),
+                     'processed_files': processed_files,
+                     'collection_id': collection_id,
+                     'submission_id': submission_id}
 
-        return submission_files
+        return sub_files
 
 
     def get_guids(self):
@@ -834,12 +834,12 @@ class NDASubmission:
         guids = set()
 
         submission_data_files = self.submission_files["files"].data_files
-        manifest_df = get_manifest_file_data(submission_data_files, 
+        manifest_df = get_manifest_file_data(submission_data_files,
                                              self._sample_manifest)
 
         if manifest_df is None:
             self.logger.debug(f"No {self._sample_manifest} manifest for submission {self.submission_id}. Looking for the {self._subject_manifest} manifest.")
-            manifest_df = get_manifest_file_data(submission_data_files, 
+            manifest_df = get_manifest_file_data(submission_data_files,
                                                  self._subject_manifest)
 
         if manifest_df is not None:
@@ -863,11 +863,9 @@ class NDACollection(object):
     logger = logging.getLogger('NDACollection')
     logger.setLevel(logging.INFO)
 
-    def __init__(self, config, collection_id=None):
+    def __init__(self, auth, collection_id=None):
 
-        self.config = config # ApplicationProperties().get_config
-        self.auth = (self.config.get('username'),
-                     self.config.get('password'))
+        self.auth = auth
         self.collection_id = str(collection_id)
 
         self._collection_submissions = get_submissions(auth=self.auth, 
@@ -879,7 +877,7 @@ class NDACollection(object):
 
         for coll_sub in self._collection_submissions:
             if coll_sub is not None:
-                sub = NDASubmission(config,
+                sub = NDASubmission(auth=self.auth,
                                     submission_id=coll_sub['submission_id'])
                 if sub.submission is not None:
                     self.submissions.append(sub)
