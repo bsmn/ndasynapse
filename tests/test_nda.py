@@ -5,6 +5,24 @@ from unittest.mock import Mock, patch
 from nose.tools import assert_is_not_none, assert_list_equal
 import ndasynapse
 
+_submission_data_example = json.loads('''{
+  "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/12345"
+      }
+    rst},
+  "collection": {
+    "id": "1234",
+    "title": "Collection 1234"
+  },
+  "dataset_created_date": "2019-09-03T14:14:24.006-0400",
+  "dataset_modified_date": null,
+  "dataset_description": "My Submission for Package Tests",
+  "dataset_title": "My Submission",
+  "submission_id": "12345",
+  "submission_status": "Upload Completed"
+}''')
+
 _guid_data_genomics_subject02_example = json.loads('''{
   "guid": "NDAR_XXXXXXXXXXX",
   "currentGUID": "NDAR_XXXXXXXXXXX",
@@ -370,6 +388,22 @@ def test_get_subject(mock_get):
 
     # Call the service, which will send a request to the server.
     response = ndasynapse.nda.get_subjects(auth=None, guid=None)
+
+    # If the request is sent successfully, then I expect a response to be returned.
+    assert_list_equal([response], [data])
+
+
+@patch('ndasynapse.nda.requests.get')
+def test_get_submission(mock_get):
+    data = _submission_data_example
+
+    # Configure the mock to return a response with an OK status code. Also, the mock should have
+    # a `json()` method that returns a list of genomic subject data.
+    mock_get.return_value = Mock(ok=True)
+    mock_get.return_value.json.return_value = data
+
+    # Call the service, which will send a request to the server.
+    response = ndasynapse.nda.get_submission(auth=None, submission_id=12345)
 
     # If the request is sent successfully, then I expect a response to be returned.
     assert_list_equal([response], [data])
