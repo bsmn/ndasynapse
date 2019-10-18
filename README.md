@@ -57,6 +57,8 @@ git pull upstream develop
 
 > *A code maintainer must review and accept your pull request.* A code review (which happens with both the contributor and the reviewer present) is required for contributing. This can be performed remotely (e.g., Skype, Hangout, or other video or phone conference).
 
+This package uses semantic versioning for releasing new versions. The version should be updated on the `develop` branch as changes are reviewed and merged in by a code maintainer. The version for the package is maintained in the [ndasynapse/__version__.py](ndasynapse/__version__.py) file.
+
 ### Testing
 
 Please strongly consider adding tests for new code. These might include unit tests (to test specific functionality of code that was added to support fixing the bug or feature), integration tests (to test that the feature is usable - e.g., it should have complete the expected behavior as reported in the feature request or bug report), or both.
