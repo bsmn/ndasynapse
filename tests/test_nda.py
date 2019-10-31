@@ -5,153 +5,158 @@ from unittest.mock import Mock, patch
 from nose.tools import assert_is_not_none, assert_list_equal
 import ndasynapse
 
-_submission_data_example = json.loads('''{
-  "_links": {
-      "self": {
-        "href": "https://nda.nih.gov/api/submission/12345"
-      }
-    rst},
-  "collection": {
-    "id": "1234",
-    "title": "Collection 1234"
-  },
-  "dataset_created_date": "2019-09-03T14:14:24.006-0400",
-  "dataset_modified_date": null,
-  "dataset_description": "My Submission for Package Tests",
-  "dataset_title": "My Submission",
-  "submission_id": "12345",
-  "submission_status": "Upload Completed"
-}''')
+_submission_data_example = json.loads('''
+  {
+    "_links": {
+        "self": {
+          "href": "https://nda.nih.gov/api/submission/12345"
+        }
+    },
+    "collection": {
+      "id": "1234",
+      "title": "Collection 1234"
+    },
+    "dataset_created_date": "2019-09-03T14:14:24.006-0400",
+    "dataset_modified_date": null,
+    "dataset_description": "My Submission for Package Tests",
+    "dataset_title": "My Submission",
+    "submission_id": "12345",
+    "submission_status": "Upload Completed"
+  }
+  ''')
 
-_guid_data_genomics_subject02_example = json.loads('''{
-  "guid": "NDAR_XXXXXXXXXXX",
-  "currentGUID": "NDAR_XXXXXXXXXXX",
-  "age": [
-    {
-      "value": 999,
-      "dataStructureRow": [
-        {
-          "links": {
-            "link": [
+_guid_data_genomics_subject02_example = json.loads('''
+  {
+    "guid": "NDAR_XXXXXXXXXXX",
+    "currentGUID": "NDAR_XXXXXXXXXXX",
+    "age": [
+      {
+        "value": 999,
+        "dataStructureRow": [
+          {
+            "links": {
+              "link": [
+                {
+                  "value": "",
+                  "rel": "data_structure",
+                  "href": "https://ndar.nih.gov/api/datadictionary/v2/datastructure/genomics_subject02",
+                  "md5sum": null,
+                  "size": null
+                },
+                {
+                  "value": "",
+                  "rel": "collection",
+                  "href": "https://ndar.nih.gov/edit_collection.html?id=2458",
+                  "md5sum": null,
+                  "size": null
+                }
+              ]
+            },
+            "shortName": "genomics_subject02",
+            "rowNumber": 92027,
+            "datasetId": 10000,
+            "dataElement": [
               {
-                "value": "",
-                "rel": "data_structure",
-                "href": "https://ndar.nih.gov/api/datadictionary/v2/datastructure/genomics_subject02",
+                "value": "99999",
+                "name": "GENOMICS_SUBJECT02_ID",
                 "md5sum": null,
                 "size": null
               },
               {
-                "value": "",
-                "rel": "collection",
-                "href": "https://ndar.nih.gov/edit_collection.html?id=2458",
+                "value": "NDAR_XXXXXXXXXXX",
+                "name": "SUBJECTKEY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "1111",
+                "name": "SRC_SUBJECT_ID",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "M",
+                "name": "SEX",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "White",
+                "name": "RACE",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "normal",
+                "name": "PHENOTYPE",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "Multiple injuries",
+                "name": "PHENOTYPE_DESCRIPTION",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "No",
+                "name": "TWINS_STUDY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "No",
+                "name": "SIBLING_STUDY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "No",
+                "name": "FAMILY_STUDY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "Yes",
+                "name": "SAMPLE_TAKEN",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "1111",
+                "name": "SAMPLE_ID_ORIGINAL",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "brain",
+                "name": "SAMPLE_DESCRIPTION",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "Some Biorepository",
+                "name": "BIOREPOSITORY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "1111",
+                "name": "PATIENT_ID_BIOREPOSITORY",
+                "md5sum": null,
+                "size": null
+              },
+              {
+                "value": "1111",
+                "name": "SAMPLE_ID_BIOREPOSITORY",
                 "md5sum": null,
                 "size": null
               }
             ]
-          },
-          "shortName": "genomics_subject02",
-          "rowNumber": 92027,
-          "datasetId": 10000,
-          "dataElement": [
-            {
-              "value": "99999",
-              "name": "GENOMICS_SUBJECT02_ID",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "NDAR_XXXXXXXXXXX",
-              "name": "SUBJECTKEY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "1111",
-              "name": "SRC_SUBJECT_ID",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "M",
-              "name": "SEX",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "White",
-              "name": "RACE",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "normal",
-              "name": "PHENOTYPE",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "Multiple injuries",
-              "name": "PHENOTYPE_DESCRIPTION",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "No",
-              "name": "TWINS_STUDY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "No",
-              "name": "SIBLING_STUDY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "No",
-              "name": "FAMILY_STUDY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "Yes",
-              "name": "SAMPLE_TAKEN",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "1111",
-              "name": "SAMPLE_ID_ORIGINAL",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "brain",
-              "name": "SAMPLE_DESCRIPTION",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "Some Biorepository",
-              "name": "BIOREPOSITORY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "1111",
-              "name": "PATIENT_ID_BIOREPOSITORY",
-              "md5sum": null,
-              "size": null
-            },
-            {
-              "value": "1111",
-              "name": "SAMPLE_ID_BIOREPOSITORY",
-              "md5sum": null,
-              "size": null
-            }
-          ]
-        }]
-    }]}''')
+          }]
+    }]
+  }
+  ''')
 
 _guid_data_genomics_sample03_example = json.loads('''{
   "guid": "NDAR_XXXXXXXXXXX",
