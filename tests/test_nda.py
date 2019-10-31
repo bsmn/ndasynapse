@@ -408,7 +408,7 @@ def test_get_submission(mock_get):
     mock_get.return_value.json.return_value = data
 
     # Call the service, which will send a request to the server.
-    response = ndasynapse.nda.get_submission(auth=None, submission_id=12345)
+    response = ndasynapse.nda.get_submission(auth=None, submissionid=12345)
 
     # If the request is sent successfully, then I expect a response to be returned.
     assert_list_equal([response], [data])
