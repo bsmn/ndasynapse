@@ -948,3 +948,25 @@ class NDACollection(object):
             return all_data_df
 
         return pandas.DataFrame()
+
+
+def get_collection_ids_from_links(row: dict) -> set:
+    """Get collection IDs from a data structure row from the NDA GUID API.
+
+    Args:
+        row: a dictionary from the JSON returned by the NDA GUID data API.
+    Returns:
+        a set of collection IDs as integers.
+
+    """
+
+    curr_collection_ids = set()
+    for link_row in row["links"]["link"]:
+        if link_row["rel"].lower() == "collection":
+            curr_collection_ids.add(int(link_row["href"].split("=")[1]))
+
+    if len(curr_collection_ids) > 1:
+        logger.warning(
+            f"Found different collection ids: {curr_collection_ids}")
+
+    return curr_collection_ids
