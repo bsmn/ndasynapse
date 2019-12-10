@@ -5,25 +5,23 @@ from unittest.mock import Mock, patch
 from nose.tools import assert_is_not_none, assert_list_equal
 import ndasynapse
 
-_submission_data_example = json.loads('''
-  {
-    "_links": {
-        "self": {
-          "href": "https://nda.nih.gov/api/submission/12345"
-        }
-    },
-    "collection": {
-      "id": "1234",
-      "title": "Collection 1234"
-    },
-    "dataset_created_date": "2019-09-03T14:14:24.006-0400",
-    "dataset_modified_date": null,
-    "dataset_description": "My Submission for Package Tests",
-    "dataset_title": "My Submission",
-    "submission_id": "12345",
-    "submission_status": "Upload Completed"
-  }
-  ''')
+_submission_data_example = json.loads('''{
+  "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/12345"
+      }
+  },
+  "collection": {
+    "id": "1234",
+    "title": "Collection 1234"
+  },
+  "dataset_created_date": "2019-09-03T14:14:24.006-0400",
+  "dataset_modified_date": null,
+  "dataset_description": "My Submission for Package Tests",
+  "dataset_title": "My Submission",
+  "submission_id": "12345",
+  "submission_status": "Upload Completed"
+}''')
 
 _guid_data_genomics_subject02_example = json.loads('''
   {
