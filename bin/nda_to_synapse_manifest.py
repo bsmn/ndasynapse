@@ -24,9 +24,6 @@ ch.setFormatter(formatter)
 ch.setLevel(logging.DEBUG)
 logger.addHandler(ch)
 
-# NDA Configuration
-REFERENCE_GUID = 'NDAR_INVRT663MBL'
-
 # This is an old genomics subject
 EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
 
@@ -43,8 +40,8 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
-    parser.add_argument("--guids", type=str, default=REFERENCE_GUID, nargs="+",
-                        help="GUID to search for. [default: %(default)s]")
+    parser.add_argument("--guids", type=str, nargs="+",
+                        help="GUID to search for.")
     parser.add_argument("--get_experiments", action="store_true", default=False)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
     parser.add_argument("--config", type=str, default=None)
