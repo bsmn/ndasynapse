@@ -361,6 +361,26 @@ def get_collection_ids_from_links(data_structure_row: dict) -> set:
 
     return collection_ids
 
+def get_experiment_ids_from_links(data_structure_row: dict) -> set:
+    """Get a set of experiment IDs from a data structure row from the NDA GUID API.
+
+    Args:
+        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+    Returns:
+        a set of experiment IDs as integers.
+
+    """
+
+    experiment_ids = set()
+    for link_row in data_structure_row["links"]["link"]:
+        if link_row["rel"].lower() == "experiment_id":
+            experiment_ids.add(int(link_row["href"].split("=")[1]))
+
+    if len(experiment_ids) > 1:
+        logger.warn(f"Found different collection ids: {experiment_ids}")
+
+    return experiment_ids
+
 def sample_data_files_to_df(guid_data):
     # Get data files from samples.
     tmp = []
