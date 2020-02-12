@@ -351,15 +351,15 @@ def get_collection_ids_from_links(data_structure_row: dict) -> set:
 
     """
 
-    curr_collection_ids = set()
+    collection_ids = set()
     for link_row in data_structure_row["links"]["link"]:
         if link_row["rel"].lower() == "collection":
-            curr_collection_ids.add(int(link_row["href"].split("=")[1]))
+            collection_ids.add(int(link_row["href"].split("=")[1]))
 
-    if len(curr_collection_ids) > 1:
-        logger.warn(f"Found different collection ids: {curr_collection_ids}")
+    if len(collection_ids) > 1:
+        logger.warn(f"Found different collection ids: {collection_ids}")
 
-    return curr_collection_ids
+    return collection_ids
 
 def sample_data_files_to_df(guid_data):
     # Get data files from samples.
