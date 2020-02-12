@@ -338,15 +338,15 @@ def nda_bsmn_location(fileobj, collection_id, submission_id):
     if bucket in NDA_STANDARD_DS_ENDPOINTS: 
 
         original_key = key.replace('ndar_data/DataSubmissions',
-                             'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
+                                   'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
         # original_key = (fileobj['file_remote_path']
         #                 .split('//')[1]
         #                 .split('/', 1)[1]
         #                 .replace('ndar_data/DataSubmissions',
         #                          'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
         #                 )
-    nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
-    return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
+        nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
+        return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
     else:
         return {'Bucket': 'nda-bsmn', 'Key': key}
 
@@ -359,6 +359,7 @@ def process_submission_files(submission_files):
                                        modified_date=x['modified_date']) for x in submission_files] # pylint: disable=line-too-long
 
     return pandas.DataFrame(submission_files_processed)
+
 
 def get_collection_ids_from_links(data_structure_row: dict) -> set:
     """Get a set of collection IDs from a data structure row from the NDA GUID API.
