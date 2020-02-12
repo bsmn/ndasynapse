@@ -321,15 +321,34 @@ def ndar_central_location(fileobj):
     return {'Bucket': bucket, 'Key': key}
 
 
+NDA_STANDARD_DS_ENDPOINTS = ('gpop', 'NDAR_Central_1', 'NDAR_Central_2', 
+                             'NDAR_Central_3', 'NDAR_Central_4')
+
 def nda_bsmn_location(fileobj, collection_id, submission_id):
-    original_key = (fileobj['file_remote_path']
-                    .split('//')[1]
-                    .split('/', 1)[1]
-                    .replace('ndar_data/DataSubmissions',
+    """Get the location of the duplicated data in the BSMN data enclave.
+
+    This is only available if the data is in one of the NDA standard data submission
+    endpoints, defined by the variable NDA_STANDARD_DS_ENDPOINTS.
+    """
+
+    remote_path = fileobj['file_remote_path']
+    (protocol, uri) = remote_path.split('//')
+    (bucket, key) = uri.split('/')
+
+    if bucket in NDA_STANDARD_DS_ENDPOINTS: 
+
+        original_key = key.replace('ndar_data/DataSubmissions',
                              'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
-                    )
+        # original_key = (fileobj['file_remote_path']
+        #                 .split('//')[1]
+        #                 .split('/', 1)[1]
+        #                 .replace('ndar_data/DataSubmissions',
+        #                          'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
+        #                 )
     nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
     return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
+    else:
+        return {'Bucket': 'nda-bsmn', 'Key': key}
 
 def process_submission_files(submission_files):
 
