@@ -381,6 +381,7 @@ def get_experiment_ids_from_links(data_structure_row: dict) -> set:
 
     return experiment_ids
 
+@deprecated(reason="This function is deprecated, use the function process_guid_data.")
 def sample_data_files_to_df(guid_data):
     # Get data files from samples.
     tmp = []
