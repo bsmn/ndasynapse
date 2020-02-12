@@ -404,6 +404,76 @@ def sample_data_files_to_df(guid_data):
 
     return samples
 
+def extract_from_cdata(string):
+    """Extract the value out of an XML CDATA section.
+
+    See https://en.wikipedia.org/wiki/CDATA#CDATA_sections_in_XML.
+
+    """
+
+    return string.lstrip("<![CDATA[").rstrip("]]>")
+
+SHORT_NAMES = ("genomics_subject02", "nichd_btb02", "genomics_sample03")
+SHORT_NAME_ID_COLS = [f"{short_name}_id".upper() for short_name in SHORT_NAMES]
+
+def process_guid_data(guid_data, drop_duplicates=False):
+    """Process the GUID data into a data frame.
+
+    This takes all values from the 'dataElement' records and adds them
+    as columns in a data frame. If the element is a data file, it extracts
+    the URL out of a CDATA XML section.
+
+    The NDA collection is added to each row in the data frame as well.
+
+    The documentation for the data structure is here:
+    https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
+
+    Args:
+        guid_data: A dictionary from the output of the NDA GUID service.
+    Returns:
+        A data frame with processed values from the dataElement records
+        plus other metadata about it's source from the guid data record.
+
+    """
+
+    data = []
+
+    for ds_row in guid_data["age"][0]["dataStructureRow"]:
+
+        collection_ids = get_collection_ids_from_links(row=ds_row)
+        collection_ids = ",".join([str(x) for x in collection_ids])
+        dataset_id = ds_row['datasetId']
+
+        manifest_data = dict(collection_id=collection_ids,
+                             dataset_id=dataset_id)
+
+        # Get all of the metadata
+        for de_row in ds_row["dataElement"]:
+            tmp_value = de_row['value']
+
+            if de_row.get('md5sum') and de_row.get('size') and \
+                de_row['name'].startswith('DATA_FILE'):             
+                tmp_value = extract_from_cdata(tmp_value)
+            manifest_data[de_row["name"]] = tmp_value
+
+        manifest_flat_df = pandas.io.json.json_normalize(manifest_data)
+        data.append(manifest_flat_df)
+
+    # Get the manifest data dictionary into a dataframe and
+    # flatten it out if necessary.
+    all_guids_df = pandas.concat(data, axis=0, ignore_index=True, sort=False)
+
+    if drop_duplicates:
+        # Get rid of any rows that are exact duplicates except for
+        # the manifest ID column
+        drop_cols = [col for col in all_guids_df.columns if col in SHORT_NAME_ID_COLS]
+        all_guids_df.drop(drop_cols, axis=1, inplace=True)
+        column_list = (all_guids_df.columns).tolist()
+        all_guids_df = all_guids_df.drop_duplicates(subset=column_list,
+                                                    keep="first")
+
+    return all_guids_df
+
 def process_samples(samples):
 
     colnames_lower = [x.lower() for x in samples.columns.tolist()]
