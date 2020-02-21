@@ -121,7 +121,7 @@ def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
         dict from JSON format.
     """
 
-    req = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}", # pylint: disable=line-too-long
+    req = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}",  # pylint: disable=line-too-long
                        auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug(f"Request {req} for GUID {subjectkey}")
@@ -250,7 +250,7 @@ def get_submission_files(auth, submissionid: int,
 
     """
 
-    req = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}/files", # pylint: disable=line-too-long
+    req = requests.get(f"https://nda.nih.gov/api/submission/{submissionid}/files",  # pylint: disable=line-too-long
                        params={'submissionFileStatus': submission_file_status,
                                'retrieveFilesToUpload': retrieve_files_to_upload},
                        auth=auth, headers={'Accept': 'application/json'})
@@ -309,7 +309,7 @@ def process_submissions(submission_data):
                         collectiontitle=x['collection']['title'],
                         submission_id=x['submission_id'],
                         submission_status=x['submission_status'],
-                        dataset_title=x['dataset_title']) for x in submission_data] # pylint: disable=line-too-long
+                        dataset_title=x['dataset_title']) for x in submission_data]  # pylint: disable=line-too-long
 
     return pandas.DataFrame(submissions)
 
@@ -340,17 +340,11 @@ def nda_bsmn_location(remote_path, collection_id, submission_id):
         return None
 
     bucket_and_key = split_bucket_and_key(remote_path)
-    # (protocol, uri) = remote_path.split('//')
-    # try:
-    #     (bucket, key) = uri.split('/', 1)
-    # except ValueError as ex:
-    #     logger.error(f"uri = {uri}")
-    #     raise ex
 
     if bucket_and_key['bucket'] in NDA_STANDARD_DS_ENDPOINTS:
 
-        original_key = bucket_and_key['key'].replace('ndar_data/DataSubmissions', # pylint: disable=line-too-long
-                                                     'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
+        original_key = bucket_and_key['key'].replace('ndar_data/DataSubmissions',  # pylint: disable=line-too-long
+                                                     'submission_{}/ndar_data/DataSubmissions'.format(submission_id))  # pylint: disable=line-too-long
         nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
         bucket_and_key = {'bucket': 'nda-bsmn', 'key': nda_bsmn_key}
 
@@ -564,7 +558,7 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     if drop_duplicates:
         # Get rid of any rows that are exact duplicates except for
         # the manifest ID column
-        drop_cols = [col for col in all_guids_df.columns if col in SHORT_NAME_ID_COLS] # pylint: disable=line-too-long
+        drop_cols = [col for col in all_guids_df.columns if col in SHORT_NAME_ID_COLS]  # pylint: disable=line-too-long
         all_guids_df.drop(drop_cols, axis=1, inplace=True)
         column_list = (all_guids_df.columns).tolist()
         all_guids_df = all_guids_df.drop_duplicates(subset=column_list,
@@ -580,10 +574,10 @@ def process_samples(samples):
 
     logger.debug(f"All column names: {colnames_lower}")
 
-    datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist() # pylint: disable=line-too-long
+    datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist()  # pylint: disable=line-too-long
 
     samples_final = pandas.DataFrame()
-    sample_columns = [col for col in samples.columns.tolist() if not col.startswith("data_file")] # pylint: disable=line-too-long
+    sample_columns = [col for col in samples.columns.tolist() if not col.startswith("data_file")]  # pylint: disable=line-too-long
 
     for col in datafile_column_names:
         keep_cols = sample_columns + \
@@ -601,10 +595,10 @@ def process_samples(samples):
 
     missing_data_file = samples_final.data_file.isnull()
 
-    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist() # pylint: disable=line-too-long
+    missing_files = samples_final.datasetid[missing_data_file].drop_duplicates().tolist()  # pylint: disable=line-too-long
 
     if missing_files:
-        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,)) # pylint: disable=line-too-long
+        logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,))  # pylint: disable=line-too-long
         samples_final = samples_final[~missing_data_file]
 
     samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
@@ -612,10 +606,10 @@ def process_samples(samples):
                                         inplace=True)
 
     # # Remove initial slash to match what is in manifest file
-    # samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value) # pylint: disable=line-too-long
+    # samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value)  # pylint: disable=line-too-long
 
     # # Remove stuff that isn't part of s3 path
-    # samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") # pylint: disable=line-too-long
+    # samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "")  # pylint: disable=line-too-long
     #                            for x in samples_final.data_file.tolist()]
 
     samples_final = samples_final[samples_final.data_file != 'nan']
@@ -659,7 +653,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
     try:
         df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
     except KeyError:
-        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}") # pylint: disable=line-too-long
+        logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}")  # pylint: disable=line-too-long
         logger.error(f"Trying to use 'gender' and add new 'sex' column.")
         df['sex'] = df['gender'].replace(['M', 'F'], ['male', 'female'])
         # df = df.drop(labels='gender', axis=1, inplace=True)
