@@ -713,14 +713,14 @@ def flattenjson(b, delim):
 
 
 
-def get_experiments(auth, experiment_ids, verbose=False):
+def get_experiments(auth, experiment_ids):
     df = []
 
     logger.info("Getting experiments.")
 
     for experiment_id in experiment_ids:
 
-        data = get_experiment(auth, experiment_id, verbose=verbose)
+        data = get_experiment(auth, experiment_id)
         data_flat = flattenjson(data[u'omicsOrFMRIOrEEG']['sections'], '.')
         data_flat['experiment_id'] = experiment_id
 
