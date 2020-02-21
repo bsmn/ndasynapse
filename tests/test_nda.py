@@ -190,14 +190,14 @@ _guid_data_genomics_sample03_example = json.loads('''{
               {
                 "value": "",
                 "rel": "data_file",
-                "href": "s3://path/to/file1.fastq.gz",
+                "href": "s3://NDAR_Central_3/submission_12345/file1.fastq.gz",
                 "md5sum": "ce84da1a84aacc55cc50a98db17e9823",
                 "size": "481114727"
               },
               {
                 "value": "",
                 "rel": "data_file",
-                "href": "s3://path/to/file2.fastq.gz",
+                "href": "s3://NDAR_Central_3/submission_12345/file2.fastq.gz",
                 "md5sum": "33070aafb06ebefd7d37d3a98d51cdd1",
                 "size": "549375212"
               }
@@ -274,7 +274,7 @@ _guid_data_genomics_sample03_example = json.loads('''{
               "size": null
             },
             {
-              "value": "<![CDATA[s3://path/to/file1.fastq.gz]]>",
+              "value": "<![CDATA[s3://NDAR_Central_3/submission_12345/file1.fastq.gz]]>",
               "name": "DATA_FILE1",
               "md5sum": "ce84da1a84aacc55cc50a98db17e9823",
               "size": "481114727"
@@ -286,7 +286,7 @@ _guid_data_genomics_sample03_example = json.loads('''{
               "size": null
             },
             {
-              "value": "<![CDATA[s3://path/to/file2.fastq.gz]]>",
+              "value": "<![CDATA[s3://NDAR_Central_3/submission_12345/file2.fastq.gz]]>",
               "name": "DATA_FILE2",
               "md5sum": "33070aafb06ebefd7d37d3a98d51cdd1",
               "size": "549375212"
@@ -342,12 +342,14 @@ _guid_data_genomics_sample03_example = json.loads('''{
           ]
         }]}]}''')
 
+
 @patch("ndasynapse.nda.requests.get")
 def test_get_guid_data(mock_get):
     mock_get.return_value.ok = True
     response = ndasynapse.nda.get_guid_data(auth=None, subjectkey=None, 
                                             short_name=None)
     assert_is_not_none(response)
+
 
 @patch('ndasynapse.nda.requests.get')
 def test_get_guid_data_ok(mock_get):
@@ -365,6 +367,7 @@ def test_get_guid_data_ok(mock_get):
     # If the request is sent successfully, then I expect a response to be returned.
     assert_list_equal([response], [data])
 
+
 @patch('ndasynapse.nda.requests.get')
 def test_get_sample(mock_get):
     data = _guid_data_genomics_sample03_example
@@ -379,6 +382,7 @@ def test_get_sample(mock_get):
 
     # If the request is sent successfully, then I expect a response to be returned.
     assert_list_equal([response], [data])
+
 
 @patch('ndasynapse.nda.requests.get')
 def test_get_subject(mock_get):
@@ -410,3 +414,33 @@ def test_get_submission(mock_get):
 
     # If the request is sent successfully, then I expect a response to be returned.
     assert_list_equal([response], [data])
+
+
+def test_get_submission_ids():
+    data = _guid_data_genomics_sample03_example
+
+    row = data["age"][0]["dataStructureRow"][0]
+    submission_ids = ndasynapse.nda.get_submission_ids_from_links(
+        data_structure_row=row)
+
+    assert submission_ids == set([12345])
+
+
+def test_get_collection_ids():
+    data = _guid_data_genomics_sample03_example
+
+    row = data["age"][0]["dataStructureRow"][0]
+    submission_ids = ndasynapse.nda.get_collection_ids_from_links(
+        data_structure_row=row)
+
+    assert submission_ids == set([2458])
+
+
+def test_get_experiment_ids():
+    data = _guid_data_genomics_sample03_example
+
+    row = data["age"][0]["dataStructureRow"][0]
+    submission_ids = ndasynapse.nda.get_experiment_ids_from_links(
+        data_structure_row=row)
+
+    assert submission_ids == set([123])
