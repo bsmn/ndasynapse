@@ -463,6 +463,7 @@ def sample_data_files_to_df(guid_data):
 
     return samples
 
+
 def extract_from_cdata(string):
     """Extract the value out of an XML CDATA section.
 
@@ -473,8 +474,10 @@ def extract_from_cdata(string):
     tmp = tmp.rstrip("]]>")
     return tmp
 
+
 SHORT_NAMES = ("genomics_subject02", "nichd_btb02", "genomics_sample03")
 SHORT_NAME_ID_COLS = [f"{short_name}_id".upper() for short_name in SHORT_NAMES]
+
 
 def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     """Process the GUID data into a data frame.
@@ -712,7 +715,6 @@ def flattenjson(b, delim):
     return val
 
 
-
 def get_experiments(auth, experiment_ids):
     df = []
 
@@ -725,7 +727,6 @@ def get_experiments(auth, experiment_ids):
         data_flat['experiment_id'] = experiment_id
 
         df.append(data_flat)
-
 
     return df
 
