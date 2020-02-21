@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey',
-                    'sample_id_original', 'sample_id_biorepository', 
+                    'sample_id_original', 'sample_id_biorepository',
                     'subject_sample_id_original', 'biorepository',
                     'subject_biorepository', 'sample_description',
                     'species', 'site', 'sex', 'sample_amount', 'phenotype',
                     'comments_misc', 'sample_unit', 'fileFormat']
 
-SAMPLE_COLUMNS = ['collection_id', 'datasetid', 'experiment_id', 
+SAMPLE_COLUMNS = ['collection_id', 'datasetid', 'experiment_id',
                   'sample_id_original', 'storage_protocol',
                   'sample_id_biorepository', 'organism', 'sample_amount', 'sample_unit',
                   'biorepository', 'comments_misc', 'site', 'genomics_sample03_id',
@@ -81,7 +81,7 @@ def authenticate(config):
     except KeyError:
         raise KeyError("Cannot find NDA credentials in config file.")
 
-    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'], 
+    auth = requests.auth.HTTPBasicAuth(ndaconfig['username'],
                                        ndaconfig['password'])
 
     return auth
@@ -97,15 +97,15 @@ def get_guid(auth, subjectkey: str) -> dict:
         dict from JSON format.
     """
 
-    r = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/",
-                     auth=auth, headers={'Accept': 'application/json'})
+    req = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/",
+                       auth=auth, headers={'Accept': 'application/json'})
 
-    logger.debug(f"Request {r} for GUID {subjectkey}")
+    logger.debug(f"Request {req} for GUID {subjectkey}")
 
-    if r.ok:
-        return r.json()
+    if req.ok:
+        return req.json()
     else:
-        logger.debug(f"{r.status_code} - {r.url} - {r.text}")
+        logger.debug(f"{req.status_code} - {req.url} - {req.text}")
         return None
 
 
@@ -115,14 +115,14 @@ def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
         subjectkey: An NDA GUID (Globally Unique Identifier)
-        short_name: The data structure to return data for 
+        short_name: The data structure to return data for
                     (e.g., genomics_sample03)
     Returns:
         dict from JSON format.
     """
 
     req = requests.get(f"https://nda.nih.gov/api/guid/{subjectkey}/data?short_name={short_name}", # pylint: disable=line-too-long
-                     auth=auth, headers={'Accept': 'application/json'})
+                       auth=auth, headers={'Accept': 'application/json'})
 
     logger.debug(f"Request {req} for GUID {subjectkey}")
 
@@ -135,7 +135,7 @@ def get_guid_data(auth, subjectkey: str, short_name: str) -> dict:
 
 def get_samples(auth, guid: str) -> dict:
     """Use the NDA api to get the `genomics_sample03` records for a GUID.
-    
+
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
         guid: An NDA GUID (Globally Unique Identifier)
@@ -143,12 +143,13 @@ def get_samples(auth, guid: str) -> dict:
         dict from JSON format.
     """
 
-    return get_guid_data(auth=auth, subjectkey=guid, short_name="genomics_sample03")
+    return get_guid_data(auth=auth, subjectkey=guid,
+                         short_name="genomics_sample03")
 
 
 def get_subjects(auth, guid):
     """Use the NDA API to get the `genomics_subject02` records for a GUID.
-    
+
         Args:
             auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
             guid: An NDA GUID (also called the subjectkey).
@@ -199,16 +200,17 @@ def get_submission(auth, submissionid: int) -> dict:
 def get_submissions(auth, collectionid, status="Upload Completed", users_own_submissions=False):
     """Use the NDA Submission API to get submissions from a NDA collection.
 
-    This is a separate service to get submission in batch that are related to a
-    collection or a user.
-    
+    This is a separate service to get submission in batch that are related to
+    a collection or a user.
+
     See `get_submission` to get a single submission by submission ID.
 
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
         collectionid: An NDA collection ID or a list of NDA collection IDs.
                       If None, gets all submissions.
-        status: Status of submissions to retrieve. If None, gets all submissions.
+        status: Status of submissions to retrieve. If None, gets
+                all submissions.
         users_own_submissions: Return only user's own submissions.
                                If False, must pass collection ID(s).
     Returns:
@@ -235,8 +237,8 @@ def get_submissions(auth, collectionid, status="Upload Completed", users_own_sub
 
 
 def get_submission_files(auth, submissionid: int,
-                         submission_file_status: str="Complete",
-                         retrieve_files_to_upload: bool=False) -> dict:
+                         submission_file_status: str = "Complete",
+                         retrieve_files_to_upload: bool = False) -> dict:
     """Use the NDA Submission API to get files for an NDA submission.
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
@@ -262,7 +264,7 @@ def get_submission_files(auth, submissionid: int,
         return None
 
 
-def get_experiment(auth, experimentid: int, verbose=False) -> dict:
+def get_experiment(auth, experimentid: int) -> dict:
     """Use the NDA Experiment API to get an experiment.
     Args:
         auth: a requests.auth.HTTPBasicAuth object to connect to NDA.
@@ -303,9 +305,9 @@ def process_submissions(submission_data):
     if not isinstance(submission_data, (list,)):
         submission_data = [submission_data]
     
-    submissions = [dict(collectionid=x['collection']['id'], 
+    submissions = [dict(collectionid=x['collection']['id'],
                         collectiontitle=x['collection']['title'],
-                        submission_id=x['submission_id'], 
+                        submission_id=x['submission_id'],
                         submission_status=x['submission_status'],
                         dataset_title=x['dataset_title']) for x in submission_data] # pylint: disable=line-too-long
 
@@ -452,7 +454,7 @@ def sample_data_files_to_df(guid_data):
 
         collection_id = get_collection_ids_from_links(row).pop()
         dataset_id = row['datasetId']
-        tmp_row_dict = {'collection_id': collection_id, 
+        tmp_row_dict = {'collection_id': collection_id,
                         'datasetId': dataset_id}
 
         for col in row['dataElement']:
@@ -498,7 +500,7 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
                         If None, no filtering.
         drop_duplicates: Return unique rows after removing the primary key
                          from the data. The primary key of each is determined by
-                         it's manifest short name plus the string "ID" 
+                         it's manifest short name plus the string "ID"
                          (for example, "GENOMICS_SUBJECT02_ID").
     Returns:
         A data frame with processed values from the dataElement records
@@ -521,7 +523,7 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
         else:
             found_collection_ids = ",".join(
                 [str(x) for x in found_collection_ids])
-        
+
         submission_ids = get_submission_ids_from_links(
             data_structure_row=ds_row)
         submission_ids = ",".join([str(x) for x in submission_ids])
@@ -594,7 +596,7 @@ def process_samples(samples):
                                     f'{col}_size': 'size'},
                            inplace=True)
 
-        samples_final = pandas.concat([samples_final, samples_tmp], 
+        samples_final = pandas.concat([samples_final, samples_tmp],
                                       ignore_index=True)
 
     missing_data_file = samples_final.data_file.isnull()
@@ -618,7 +620,7 @@ def process_samples(samples):
 
     samples_final = samples_final[samples_final.data_file != 'nan']
 
-    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'], 
+    samples_final['species'] = samples_final.organism.replace(['Homo Sapiens'],
                                                               ['Human'])
 
     # df.drop(["organism"], axis=1, inplace=True)
@@ -635,9 +637,9 @@ def subjects_to_df(json_data):
     for row in json_data['age'][0]['dataStructureRow']:
         collection_id = get_collection_ids_from_links(row).pop()
 
-        foo = {col['name']: col['value'] for col in row['dataElement']}
-        foo['collection_id'] = collection_id
-        tmp.append(foo)
+        new_row = {col['name']: col['value'] for col in row['dataElement']}
+        new_row['collection_id'] = collection_id
+        tmp.append(new_row)
 
     df = pandas.io.json.json_normalize(tmp)
 
@@ -656,7 +658,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
 
     try:
         df['sex'] = df['sex'].replace(['M', 'F'], ['male', 'female'])
-    except KeyError as e:
+    except KeyError:
         logger.error(f"Key 'sex' not found in data frame. Available columns: {df.columns}") # pylint: disable=line-too-long
         logger.error(f"Trying to use 'gender' and add new 'sex' column.")
         df['sex'] = df['gender'].replace(['M', 'F'], ['male', 'female'])
@@ -680,9 +682,9 @@ def tissues_to_df(json_data):
     for row in json_data['age'][0]['dataStructureRow']:
         collection_id = get_collection_ids_from_links(row).pop()
 
-        foo = {col['name']: col['value'] for col in row['dataElement']}
-        foo['collection_id'] = collection_id
-        tmp.append(foo)
+        new_row = {col['name']: col['value'] for col in row['dataElement']}
+        new_row['collection_id'] = collection_id
+        tmp.append(new_row)
 
     df = pandas.io.json.json_normalize(tmp)
 
@@ -785,13 +787,13 @@ def merge_tissues_subjects(tissues, subjects):
     """Merge together the tissue file and the subjects file.
 
     We instituted a standard to use `sample_id_biorepository` in the
-    `genomics_sample03` file to map to `sample_id_original` in the 
+    `genomics_sample03` file to map to `sample_id_original` in the
     `nichd_btb02` file.
 
     """
 
     btb_subjects = tissues.merge(subjects, how="left",
-                                 left_on=["src_subject_id", "subjectkey", 
+                                 left_on=["src_subject_id", "subjectkey",
                                           "race", "sex"],
                                  right_on=["src_subject_id", "subjectkey",
                                            "race", "sex"])
@@ -882,7 +884,7 @@ def get_manifest_file_data(data_files, manifest_type):
         data_file_as_string = data_file["content"].decode("utf-8")
 
         if manifest_type in data_file_as_string:
-            manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), 
+            manifest_df = pandas.read_csv(io.StringIO(data_file_as_string),
                                           skiprows=1)
             return manifest_df
 
@@ -913,8 +915,8 @@ class NDASubmissionFiles:
          self.submission_ticket,
          self.submission_memento) = self.get_nda_submission_file_types(files)
 
-        self.bsmn_locations = [nda_bsmn_location(x.get('remote_path', None), 
-                                                 self.collection_id, 
+        self.bsmn_locations = [nda_bsmn_location(x.get('remote_path', None),
+                                                 self.collection_id,
                                                  self.submission_id)
                                for x in files]
 
@@ -991,7 +993,7 @@ class NDASubmission:
 
         self.auth = auth
         self.submission_id = str(submission_id)
-        self.submission = get_submission(auth=self.auth, 
+        self.submission = get_submission(auth=self.auth,
                                          submissionid=submission_id)
 
         if self.submission is None:
@@ -1029,10 +1031,10 @@ class NDASubmission:
 
     def get_guids(self):
         """Get a list of GUIDs for each submission.
-        
+
         Uses the genomics subject manifest data file.
-        
-        This requires looking inside the submission-associated data file 
+
+        This requires looking inside the submission-associated data file
         to find the GUIDs. It is prone to issues of being outdated due to
         submission edits.
 
@@ -1104,7 +1106,7 @@ class NDACollection(object):
 
     def get_guids(self):
         """Get a list of GUIDs for each submission.
-        
+
         Uses the genomics subject manifest data file.
 
         This requires looking inside the submission-associated data file to find the GUIDs.
@@ -1118,7 +1120,7 @@ class NDACollection(object):
             guids.update(submission.guids)
 
         return guids
-        
+
     def get_collection_manifests(self, manifest_type):
         """Get all original manifests submitted with each submission in a collection.
 
@@ -1133,7 +1135,7 @@ class NDACollection(object):
         """
 
         logger.warning("Information in the collection manifests may be out of date.")
-        
+
         all_data = []
 
         for submission in self.submissions:
@@ -1152,7 +1154,7 @@ class NDACollection(object):
                 all_data.append(manifest_data)
             else:
                 logger.info(f"No {manifest_type} data found for submission {submission.submission_id}.")
-        
+
         if all_data:
             all_data_df = pandas.concat(all_data, axis=0, ignore_index=True, sort=False)
             return all_data_df
