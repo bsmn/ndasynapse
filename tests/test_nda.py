@@ -421,8 +421,8 @@ def test_get_submission_ids():
 
     row = data["age"][0]["dataStructureRow"][0]
     submission_ids = ndasynapse.nda.get_submission_ids_from_links(
-      data_structure_row=row)
-  
+        data_structure_row=row)
+
     assert submission_ids == set([12345])
 
 
@@ -442,5 +442,5 @@ def test_get_experiment_ids():
     row = data["age"][0]["dataStructureRow"][0]
     submission_ids = ndasynapse.nda.get_experiment_ids_from_links(
         data_structure_row=row)
-  
+
     assert submission_ids == set([123])
