@@ -314,13 +314,14 @@ def process_submissions(submission_data):
 
     return pandas.DataFrame(submissions)
 
+
 def split_bucket_and_key(s3_path):
     if not s3_path.startswith("s3://"):
         raise ValueError("Path does not start with s3://.")
 
     bucket, key = (s3_path
-                    .split('//')[1]
-                    .split('/', 1))
+                   .split('//')[1]
+                   .split('/', 1))
     return {'bucket': bucket, 'key': key}
 
 
@@ -330,8 +331,9 @@ NDA_STANDARD_DS_ENDPOINTS = ('gpop', 'NDAR_Central_1', 'NDAR_Central_2',
 def nda_bsmn_location(remote_path, collection_id, submission_id):
     """Get the location of the duplicated data in the BSMN data enclave.
 
-    This is only available if the data is in one of the NDA standard data submission
-    endpoints, defined by the variable NDA_STANDARD_DS_ENDPOINTS.
+    This is only available if the data is in one of the NDA standard 
+    data submission endpoints, defined by the variable 
+    NDA_STANDARD_DS_ENDPOINTS.
     """
 
     if remote_path is None:
@@ -345,9 +347,9 @@ def nda_bsmn_location(remote_path, collection_id, submission_id):
     #     logger.error(f"uri = {uri}")
     #     raise ex
 
-    if bucket_and_key['bucket'] in NDA_STANDARD_DS_ENDPOINTS: 
+    if bucket_and_key['bucket'] in NDA_STANDARD_DS_ENDPOINTS:
 
-        original_key = bucket_and_key['key'].replace('ndar_data/DataSubmissions',
+        original_key = bucket_and_key['key'].replace('ndar_data/DataSubmissions', # pylint: disable=line-too-long
                                                      'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
         # original_key = (fileobj['file_remote_path']
         #                 .split('//')[1]
@@ -357,27 +359,34 @@ def nda_bsmn_location(remote_path, collection_id, submission_id):
         #                 )
         nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
         bucket_and_key = {'bucket': 'nda-bsmn', 'key': nda_bsmn_key}
-    
+
     return f"s3://{bucket_and_key['bucket']}/{bucket_and_key['key']}"
+
 
 def process_submission_files(submission_files):
 
-    submission_files_processed = [dict(id=x['id'], file_type=x['file_type'], 
+    submission_files_processed = [dict(id=x['id'], 
+                                       file_type=x['file_type'],
                                        file_remote_path=x['file_remote_path'],
-                                       status=x['status'], md5sum=x['md5sum'], 
-                                       size=x['size'], created_date=x['created_date'],
-                                       modified_date=x['modified_date']) for x in submission_files] # pylint: disable=line-too-long
+                                       status=x['status'], 
+                                       md5sum=x['md5sum'],
+                                       size=x['size'], 
+                                       created_date=x['created_date'],
+                                       modified_date=x['modified_date'])
+                                       for x in submission_files]
 
     return pandas.DataFrame(submission_files_processed)
 
-def get_submission_ids_from_links(data_structure_row: dict) -> set:
-    """Get a set of submission IDs from a data structure row from the NDA GUID API.
 
-    This requires that the data was submitted to one of NDA's standard data submission
-    AWS S3 endpoints (bucket names are defined in NDA_STANDARD_DS_ENDPOINTS).
+def get_submission_ids_from_links(data_structure_row: dict) -> set:
+    """Get a set of submission IDs from a row from the NDA GUID API.
+
+    This requires that the data was submitted to one of NDA's
+    standard data submission AWS S3 endpoints. Bucket names are defined in
+    NDA_STANDARD_DS_ENDPOINTS.
 
     Args:
-        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+        data_structure_row: a dictionary from the NDA GUID data API.
     Returns:
         a set of submission IDs as integers.
 
@@ -388,7 +397,7 @@ def get_submission_ids_from_links(data_structure_row: dict) -> set:
         if link_row["rel"].lower() == "data_file":
             bucket_and_key = split_bucket_and_key(link_row["href"])
             if bucket_and_key['bucket'] not in NDA_STANDARD_DS_ENDPOINTS:
-                logger.warn("Found a file not submitted to an NDA standard endpoint. Not adding a submission ID.")
+                logger.warn("Found a file not submitted to an NDA standard endpoint. Not adding a submission ID.")  # pylint: disable=line-too-long
             else:
                 submission_string = bucket_and_key['key'].split("/", 1)[0]
                 submission_id = submission_string.replace("submission_", "")
@@ -402,10 +411,10 @@ def get_submission_ids_from_links(data_structure_row: dict) -> set:
 
 
 def get_collection_ids_from_links(data_structure_row: dict) -> set:
-    """Get a set of collection IDs from a data structure row from the NDA GUID API.
+    """Get a set of collection IDs from the NDA GUID API.
 
     Args:
-        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+        data_structure_row: a dictionary returned by the NDA GUID data API.
     Returns:
         a set of collection IDs as integers.
 
@@ -422,10 +431,10 @@ def get_collection_ids_from_links(data_structure_row: dict) -> set:
     return collection_ids
 
 def get_experiment_ids_from_links(data_structure_row: dict) -> set:
-    """Get a set of experiment IDs from a data structure row from the NDA GUID API.
+    """Get a set of experiment IDs from the NDA GUID API.
 
     Args:
-        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+        data_structure_row: a dictionary returned by the NDA GUID data API.
     Returns:
         a set of experiment IDs as integers.
 
@@ -440,6 +449,7 @@ def get_experiment_ids_from_links(data_structure_row: dict) -> set:
         logger.warn(f"Found different collection ids: {experiment_ids}")
 
     return experiment_ids
+
 
 @deprecated(reason="This function is deprecated, use the function process_guid_data.")
 def sample_data_files_to_df(guid_data):
@@ -492,10 +502,12 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
 
     Args:
         guid_data: A dictionary from the output of the NDA GUID service.
-        collection_ids: a list of collection IDs to filter records on. If None, no filtering.
-        drop_duplicates: Return unique rows after removing the primary key from the data.
-                         The primary key of each is determined by it's manifest short name plus
-                         the string "ID" (for example, "GENOMICS_SUBJECT02_ID").
+        collection_ids: a list of collection IDs to filter records on.
+                        If None, no filtering.
+        drop_duplicates: Return unique rows after removing the primary key
+                         from the data. The primary key of each is determined by
+                         it's manifest short name plus the string "ID" 
+                         (for example, "GENOMICS_SUBJECT02_ID").
     Returns:
         A data frame with processed values from the dataElement records
         plus other metadata about it's source from the guid data record.
@@ -507,23 +519,25 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     for ds_row in guid_data["age"][0]["dataStructureRow"]:
 
         dataset_id = str(ds_row['datasetId'])
-        
-        found_collection_ids = get_collection_ids_from_links(data_structure_row=ds_row)
-        
+
+        found_collection_ids = get_collection_ids_from_links(
+            data_structure_row=ds_row)
+
         # Check to see if this data comes from the provided collections
         if collection_ids and not found_collection_ids.intersection(collection_ids):
-            logger.debug(f"Collection IDS: {collection_ids}, found collection ids: {found_collection_ids}")
             continue
         else:
-            found_collection_ids = ",".join([str(x) for x in found_collection_ids])
+            found_collection_ids = ",".join(
+                [str(x) for x in found_collection_ids])
         
-        submission_ids = get_submission_ids_from_links(data_structure_row=ds_row)
+        submission_ids = get_submission_ids_from_links(
+            data_structure_row=ds_row)
         submission_ids = ",".join([str(x) for x in submission_ids])
         logger.debug(f"Submission IDs: {submission_ids}")
 
         manifest_data = dict(collection_id=found_collection_ids,
-                            submission_id=submission_ids,
-                            datasetid=dataset_id)
+                             submission_id=submission_ids,
+                             datasetid=dataset_id)
 
         # Get all of the metadata
         for de_row in ds_row["dataElement"]:
@@ -547,7 +561,8 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     # Get the manifest data dictionary into a dataframe and
     # flatten it out if necessary.
     try:
-        all_guids_df = pandas.concat(data, axis=0, ignore_index=True, sort=False)
+        all_guids_df = pandas.concat(data, axis=0, ignore_index=True,
+                                     sort=False)
     except ValueError:
         logger.warning("No records found.")
         return pandas.DataFrame()
@@ -555,13 +570,14 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     if drop_duplicates:
         # Get rid of any rows that are exact duplicates except for
         # the manifest ID column
-        drop_cols = [col for col in all_guids_df.columns if col in SHORT_NAME_ID_COLS]
+        drop_cols = [col for col in all_guids_df.columns if col in SHORT_NAME_ID_COLS] # pylint: disable=line-too-long
         all_guids_df.drop(drop_cols, axis=1, inplace=True)
         column_list = (all_guids_df.columns).tolist()
         all_guids_df = all_guids_df.drop_duplicates(subset=column_list,
                                                     keep="first")
 
     return all_guids_df
+
 
 def process_samples(samples):
 
@@ -596,7 +612,7 @@ def process_samples(samples):
     if missing_files:
         logger.info("These datasets are missing a data file and will be dropped: %s" % (missing_files,)) # pylint: disable=line-too-long
         samples_final = samples_final[~missing_data_file]
-    
+
     samples_final['fileFormat'].replace(['BAM', 'FASTQ', 'bam_index'],
                                         ['bam', 'fastq', 'bai'],
                                         inplace=True)
@@ -668,7 +684,7 @@ def process_subjects(df, exclude_genomics_subjects=[]):
 
 def tissues_to_df(json_data):
     tmp = []
-    
+
     for row in json_data['age'][0]['dataStructureRow']:
         collection_id = get_collection_ids_from_links(row).pop()
 
@@ -738,31 +754,31 @@ def process_experiments(d):
     logger.info("Processing experiments.")
 
     for experiment in d:
-    
+
         for key in fix_keys:
             foo = experiment[key]
             tmp = ",".join(map(lambda x: "%s %s" % (x['vendorName'], x['value']), foo))
             experiment[key] = tmp
-    
+
         foo = experiment['processing.processingProtocols.processingProtocol']
         tmp = ",".join(map(lambda x: "%s: %s" % (x['technologyName'], x['value']), foo))
         experiment['processing.processingProtocols.processingProtocol'] = tmp
-        
+
         experiment['extraction.extractionProtocols.protocolName'] = ",".join(
             experiment['extraction.extractionProtocols.protocolName'])
 
         logger.debug("Processed experiment %s\n" % (experiment, ))
 
         expt_df = pandas.DataFrame(experiment, index=experiment.keys())
-        
+
         df = df.append(expt_df, ignore_index=True)
-    
+
     df_change = df[EXPERIMENT_COLUMNS_CHANGE.keys()]
     df_change = df_change.rename(columns=EXPERIMENT_COLUMNS_CHANGE, inplace=False)
     df2 = pandas.concat([df, df_change], axis=1)
     df2 = df2.rename(columns=lambda x: x.replace(".", "_"))
     df2['platform'] = df2['equipmentName'].replace(EQUIPMENT_NAME_REPLACEMENTS,
-                                                  inplace=False)
+                                                   inplace=False)
 
     df2['assay'] = df2['applicationSubType'].replace(APPLICATION_SUBTYPE_REPLACEMENTS,
                                                      inplace=False)
@@ -776,17 +792,21 @@ def process_experiments(d):
 def merge_tissues_subjects(tissues, subjects):
     """Merge together the tissue file and the subjects file.
 
-    We instituted a standard to use `sample_id_biorepository` in the `genomics_sample03`
-    file to map to `sample_id_original` in the `nichd_btb02` file.
+    We instituted a standard to use `sample_id_biorepository` in the
+    `genomics_sample03` file to map to `sample_id_original` in the 
+    `nichd_btb02` file.
 
     """
 
     btb_subjects = tissues.merge(subjects, how="left",
-                                 left_on=["src_subject_id", "subjectkey", "race", "sex"],
-                                 right_on=["src_subject_id", "subjectkey", "race", "sex"])
+                                 left_on=["src_subject_id", "subjectkey", 
+                                          "race", "sex"],
+                                 right_on=["src_subject_id", "subjectkey",
+                                           "race", "sex"])
 
     # Rename this column to simplify merging with the sample table
-    btb_subjects = btb_subjects.assign(sample_id_biorepository=btb_subjects.sample_id_original)
+    btb_subjects = btb_subjects.assign(
+        sample_id_biorepository=btb_subjects.sample_id_original)
 
     # Drop this as it will come back from the samples
     btb_subjects.drop('sample_id_original', axis=1, inplace=True)
@@ -798,8 +818,10 @@ def merge_tissues_samples(btb_subjects, samples):
     """Merge the tissue/subject with the samples to make a complete metadata table."""
 
     metadata = samples.merge(btb_subjects, how="left",
-                             left_on=["src_subject_id", "subjectkey", "sample_id_biorepository"],
-                             right_on=["src_subject_id", "subjectkey", "sample_id_biorepository"])
+                             left_on=["src_subject_id", "subjectkey",
+                                      "sample_id_biorepository"],
+                             right_on=["src_subject_id", "subjectkey",
+                                       "sample_id_biorepository"])
 
     metadata = metadata.drop_duplicates()
 
@@ -810,12 +832,14 @@ def merge_tissues_samples(btb_subjects, samples):
 def get_manifests(bucket):
     """Get list of `.manifest` files from the NDA-BSMN bucket.
 
-    Read them in and concatenate them, under the assumption that the files listed
-    in the manifest are in the same directory as the manifest file itself.
+    Read them in and concatenate them, under the assumption that the files
+    listed in the manifest are in the same directory as the manifest file
+    itself.
 
     """
 
-    manifests = [x for x in bucket.objects.all() if x.key.find('.manifest') >=0]
+    objects = bucket.objects.all()
+    manifests = [x for x in objects if x.key.find('.manifest') >= 0]
 
     manifest = pandas.DataFrame()
 
@@ -866,10 +890,11 @@ def get_manifest_file_data(data_files, manifest_type):
         data_file_as_string = data_file["content"].decode("utf-8")
 
         if manifest_type in data_file_as_string:
-            manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+            manifest_df = pandas.read_csv(io.StringIO(data_file_as_string), 
+                                          skiprows=1)
             return manifest_df
 
-    return None    
+    return None
 
 class NDASubmissionFiles:
 
@@ -888,15 +913,18 @@ class NDASubmissionFiles:
         self.headers = {'Accept': 'application/json'}
         self.collection_id = str(collection_id)
         self.submission_id = str(submission_id)
-        
+
         (self.associated_files,
          self.data_files,
          self.manifest_file,
          self.submission_package,
          self.submission_ticket,
          self.submission_memento) = self.get_nda_submission_file_types(files)
-        
-        self.bsmn_locations = [nda_bsmn_location(x.get('remote_path', None), self.collection_id, self.submission_id) for x in files]
+
+        self.bsmn_locations = [nda_bsmn_location(x.get('remote_path', None), 
+                                                 self.collection_id, 
+                                                 self.submission_id)
+                               for x in files]
 
         self.debug = True
 
@@ -940,7 +968,7 @@ class NDASubmissionFiles:
         return request.content
 
     def manifest_to_df(self, short_name):
-        """Read the contents of a data file of the type given by the short name.
+        """Read the contents of a data file given by the short name.
 
         Args:
             short_name: An NDA short name for a manifest type (like 'genomics_sample03').
@@ -952,10 +980,12 @@ class NDASubmissionFiles:
         for data_file in self.data_files:
             data_file_as_string = data_file['content'].decode('utf-8')
             if short_name in data_file_as_string:
-                data = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
+                data = pandas.read_csv(io.StringIO(data_file_as_string),
+                                       skiprows=1)
                 return data
 
         return None
+
 
 class NDASubmission:
 
@@ -969,7 +999,8 @@ class NDASubmission:
 
         self.auth = auth
         self.submission_id = str(submission_id)
-        self.submission = get_submission(auth=self.auth, submissionid=submission_id)
+        self.submission = get_submission(auth=self.auth, 
+                                         submissionid=submission_id)
 
         if self.submission is None:
             self.logger.error(f"Could not retrieve submission {self.submission_id}.")
@@ -977,7 +1008,8 @@ class NDASubmission:
             self.submission_files = None
             self.guids = set()
         else:
-            self.processed_submission = process_submissions(submission_data=self.submission)
+            self.processed_submission = process_submissions(
+                submission_data=self.submission)
             self.submission_files = self.get_submission_files()
             self.guids = self.get_guids()
             self.logger.info(f"Got submission {self.submission_id}.")
@@ -1004,10 +1036,13 @@ class NDASubmission:
 
 
     def get_guids(self):
-        """Get a list of GUIDs for each submission from the genomics subject manifest data file.
+        """Get a list of GUIDs for each submission.
         
-        This requires looking inside the submission-associated data file to find the GUIDs.
-        It is prone to issues of being outdated due to submission edits. It 
+        Uses the genomics subject manifest data file.
+        
+        This requires looking inside the submission-associated data file 
+        to find the GUIDs. It is prone to issues of being outdated due to
+        submission edits.
 
         """
         logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
@@ -1049,11 +1084,11 @@ class NDACollection(object):
         self.auth = auth
         self.collection_id = str(collection_id)
 
-        self._collection_submissions = get_submissions(auth=self.auth, 
-                                                       collectionid = self.collection_id)
+        self._collection_submissions = get_submissions(auth=self.auth,
+                                                       collectionid=self.collection_id)
 
         self.logger.info(f"Getting {len(self._collection_submissions)} submissions for collection {self.collection_id}.")
-        
+
         self.submissions = []
 
         for coll_sub in self._collection_submissions:
@@ -1062,7 +1097,7 @@ class NDACollection(object):
                                     submission_id=coll_sub['submission_id'])
                 if sub.submission is not None:
                     self.submissions.append(sub)
-            
+
         self.submission_files = self.get_submission_files()
         self.guids = self.get_guids()
         self.logger.info(f"Got collection {self.collection_id}.")
@@ -1076,10 +1111,12 @@ class NDACollection(object):
 
 
     def get_guids(self):
-        """Get a list of GUIDs for each submission from the genomics subject manifest data file.
+        """Get a list of GUIDs for each submission.
         
+        Uses the genomics subject manifest data file.
+
         This requires looking inside the submission-associated data file to find the GUIDs.
-        It is prone to issues of being outdated due to submission edits. It 
+        It is prone to issues of being outdated due to submission edits.
 
         """
         logger.warning("GUID information comes from the submission manifests may be out of date with respect to the NDA database.")
@@ -1129,5 +1166,3 @@ class NDACollection(object):
             return all_data_df
 
         return pandas.DataFrame()
-
-
