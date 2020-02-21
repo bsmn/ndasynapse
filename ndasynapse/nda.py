@@ -314,31 +314,41 @@ def process_submissions(submission_data):
 
     return pandas.DataFrame(submissions)
 
-def ndar_central_location(fileobj):
-    bucket, key = (fileobj['file_remote_path']
+def split_bucket_and_key(s3_path):
+    if not s3_path.startswith("s3://"):
+        raise ValueError("Path does not start with s3://.")
+
+    bucket, key = (s3_path
                     .split('//')[1]
                     .split('/', 1))
-    return {'Bucket': bucket, 'Key': key}
+    return {'bucket': bucket, 'key': key}
 
 
 NDA_STANDARD_DS_ENDPOINTS = ('gpop', 'NDAR_Central_1', 'NDAR_Central_2', 
                              'NDAR_Central_3', 'NDAR_Central_4')
 
-def nda_bsmn_location(fileobj, collection_id, submission_id):
+def nda_bsmn_location(remote_path, collection_id, submission_id):
     """Get the location of the duplicated data in the BSMN data enclave.
 
     This is only available if the data is in one of the NDA standard data submission
     endpoints, defined by the variable NDA_STANDARD_DS_ENDPOINTS.
     """
 
-    remote_path = fileobj['file_remote_path']
-    (protocol, uri) = remote_path.split('//')
-    (bucket, key) = uri.split('/')
+    if remote_path is None:
+        return None
 
-    if bucket in NDA_STANDARD_DS_ENDPOINTS: 
+    bucket_and_key = split_bucket_and_key(remote_path)
+    # (protocol, uri) = remote_path.split('//')
+    # try:
+    #     (bucket, key) = uri.split('/', 1)
+    # except ValueError as ex:
+    #     logger.error(f"uri = {uri}")
+    #     raise ex
 
-        original_key = key.replace('ndar_data/DataSubmissions',
-                                   'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
+    if bucket_and_key['bucket'] in NDA_STANDARD_DS_ENDPOINTS: 
+
+        original_key = bucket_and_key['key'].replace('ndar_data/DataSubmissions',
+                                                     'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
         # original_key = (fileobj['file_remote_path']
         #                 .split('//')[1]
         #                 .split('/', 1)[1]
@@ -346,9 +356,9 @@ def nda_bsmn_location(fileobj, collection_id, submission_id):
         #                          'submission_{}/ndar_data/DataSubmissions'.format(submission_id)) # pylint: disable=line-too-long
         #                 )
         nda_bsmn_key = 'collection_{}/{}'.format(collection_id, original_key)
-        return {'Bucket': 'nda-bsmn', 'Key': nda_bsmn_key}
-    else:
-        return {'Bucket': 'nda-bsmn', 'Key': key}
+        bucket_and_key = {'bucket': 'nda-bsmn', 'key': nda_bsmn_key}
+    
+    return f"s3://{bucket_and_key['bucket']}/{bucket_and_key['key']}"
 
 def process_submission_files(submission_files):
 
@@ -359,6 +369,36 @@ def process_submission_files(submission_files):
                                        modified_date=x['modified_date']) for x in submission_files] # pylint: disable=line-too-long
 
     return pandas.DataFrame(submission_files_processed)
+
+def get_submission_ids_from_links(data_structure_row: dict) -> set:
+    """Get a set of submission IDs from a data structure row from the NDA GUID API.
+
+    This requires that the data was submitted to one of NDA's standard data submission
+    AWS S3 endpoints (bucket names are defined in NDA_STANDARD_DS_ENDPOINTS).
+
+    Args:
+        data_structure_row: a dictionary from the JSON returned by the NDA GUID data API.
+    Returns:
+        a set of submission IDs as integers.
+
+    """
+
+    submission_ids = set()
+    for link_row in data_structure_row["links"]["link"]:
+        if link_row["rel"].lower() == "data_file":
+            bucket_and_key = split_bucket_and_key(link_row["href"])
+            if bucket_and_key['bucket'] not in NDA_STANDARD_DS_ENDPOINTS:
+                logger.warn("Found a file not submitted to an NDA standard endpoint. Not adding a submission ID.")
+            else:
+                submission_string = bucket_and_key['key'].split("/", 1)[0]
+                submission_id = submission_string.replace("submission_", "")
+                submission_id = int(submission_id)
+                submission_ids.add(submission_id)
+
+    if len(submission_ids) > 1:
+        logger.warn(f"Found different submission ids: {submission_ids}")
+
+    return submission_ids
 
 
 def get_collection_ids_from_links(data_structure_row: dict) -> set:
@@ -431,13 +471,14 @@ def extract_from_cdata(string):
     See https://en.wikipedia.org/wiki/CDATA#CDATA_sections_in_XML.
 
     """
-
-    return string.lstrip("<![CDATA[").rstrip("]]>")
+    tmp = string.lstrip("<![CDATA[")
+    tmp = tmp.rstrip("]]>")
+    return tmp
 
 SHORT_NAMES = ("genomics_subject02", "nichd_btb02", "genomics_sample03")
 SHORT_NAME_ID_COLS = [f"{short_name}_id".upper() for short_name in SHORT_NAMES]
 
-def process_guid_data(guid_data, drop_duplicates=False):
+def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
     """Process the GUID data into a data frame.
 
     This takes all values from the 'dataElement' records and adds them
@@ -451,6 +492,10 @@ def process_guid_data(guid_data, drop_duplicates=False):
 
     Args:
         guid_data: A dictionary from the output of the NDA GUID service.
+        collection_ids: a list of collection IDs to filter records on. If None, no filtering.
+        drop_duplicates: Return unique rows after removing the primary key from the data.
+                         The primary key of each is determined by it's manifest short name plus
+                         the string "ID" (for example, "GENOMICS_SUBJECT02_ID").
     Returns:
         A data frame with processed values from the dataElement records
         plus other metadata about it's source from the guid data record.
@@ -461,28 +506,51 @@ def process_guid_data(guid_data, drop_duplicates=False):
 
     for ds_row in guid_data["age"][0]["dataStructureRow"]:
 
-        collection_ids = get_collection_ids_from_links(row=ds_row)
-        collection_ids = ",".join([str(x) for x in collection_ids])
-        dataset_id = ds_row['datasetId']
+        dataset_id = str(ds_row['datasetId'])
+        
+        found_collection_ids = get_collection_ids_from_links(data_structure_row=ds_row)
+        
+        # Check to see if this data comes from the provided collections
+        if collection_ids and not found_collection_ids.intersection(collection_ids):
+            logger.debug(f"Collection IDS: {collection_ids}, found collection ids: {found_collection_ids}")
+            continue
+        else:
+            found_collection_ids = ",".join([str(x) for x in found_collection_ids])
+        
+        submission_ids = get_submission_ids_from_links(data_structure_row=ds_row)
+        submission_ids = ",".join([str(x) for x in submission_ids])
+        logger.debug(f"Submission IDs: {submission_ids}")
 
-        manifest_data = dict(collection_id=collection_ids,
-                             dataset_id=dataset_id)
+        manifest_data = dict(collection_id=found_collection_ids,
+                            submission_id=submission_ids,
+                            datasetid=dataset_id)
 
         # Get all of the metadata
         for de_row in ds_row["dataElement"]:
-            tmp_value = de_row['value']
+
+            manifest_data[de_row['name']] = de_row['value']
 
             if de_row.get('md5sum') and de_row.get('size') and \
-                de_row['name'].startswith('DATA_FILE'):             
-                tmp_value = extract_from_cdata(tmp_value)
-            manifest_data[de_row["name"]] = tmp_value
+                de_row['name'].startswith('DATA_FILE'):
+                manifest_data[de_row["name"]] = extract_from_cdata(de_row['value'])
+                logger.debug(manifest_data)
+                manifest_data["%s_bsmn_location" % (de_row['name'], )] = \
+                    nda_bsmn_location(remote_path=manifest_data[de_row["name"]],
+                                      collection_id=manifest_data['collection_id'],
+                                      submission_id=manifest_data['submission_id'])
+                manifest_data["%s_md5sum" % (de_row['name'], )] = de_row['md5sum']
+                manifest_data["%s_size" % (de_row['name'], )] = de_row['size']
 
         manifest_flat_df = pandas.io.json.json_normalize(manifest_data)
         data.append(manifest_flat_df)
 
     # Get the manifest data dictionary into a dataframe and
     # flatten it out if necessary.
-    all_guids_df = pandas.concat(data, axis=0, ignore_index=True, sort=False)
+    try:
+        all_guids_df = pandas.concat(data, axis=0, ignore_index=True, sort=False)
+    except ValueError:
+        logger.warning("No records found.")
+        return pandas.DataFrame()
 
     if drop_duplicates:
         # Get rid of any rows that are exact duplicates except for
@@ -499,6 +567,8 @@ def process_samples(samples):
 
     colnames_lower = [x.lower() for x in samples.columns.tolist()]
     samples.columns = colnames_lower
+
+    logger.debug(f"All column names: {colnames_lower}")
 
     datafile_column_names = samples.filter(regex=r"data_file\d+$").columns.tolist() # pylint: disable=line-too-long
 
@@ -531,12 +601,12 @@ def process_samples(samples):
                                         ['bam', 'fastq', 'bai'],
                                         inplace=True)
 
-    # Remove initial slash to match what is in manifest file
-    samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value) # pylint: disable=line-too-long
+    # # Remove initial slash to match what is in manifest file
+    # samples_final.data_file = samples_final['data_file'].apply(lambda value: value[1:] if not pandas.isnull(value) else value) # pylint: disable=line-too-long
 
-    # Remove stuff that isn't part of s3 path
-    samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") # pylint: disable=line-too-long
-                               for x in samples_final.data_file.tolist()]
+    # # Remove stuff that isn't part of s3 path
+    # samples_final.data_file = [str(x).replace("![CDATA[", "").replace("]]>", "") # pylint: disable=line-too-long
+    #                            for x in samples_final.data_file.tolist()]
 
     samples_final = samples_final[samples_final.data_file != 'nan']
 
@@ -826,7 +896,7 @@ class NDASubmissionFiles:
          self.submission_ticket,
          self.submission_memento) = self.get_nda_submission_file_types(files)
         
-        self.bsmn_locations = [nda_bsmn_location(x, self.collection_id, self.submission_id) for x in files]
+        self.bsmn_locations = [nda_bsmn_location(x.get('remote_path', None), self.collection_id, self.submission_id) for x in files]
 
         self.debug = True
 
@@ -1061,23 +1131,3 @@ class NDACollection(object):
         return pandas.DataFrame()
 
 
-def get_collection_ids_from_links(row: dict) -> set:
-    """Get collection IDs from a data structure row from the NDA GUID API.
-
-    Args:
-        row: a dictionary from the JSON returned by the NDA GUID data API.
-    Returns:
-        a set of collection IDs as integers.
-
-    """
-
-    curr_collection_ids = set()
-    for link_row in row["links"]["link"]:
-        if link_row["rel"].lower() == "collection":
-            curr_collection_ids.add(int(link_row["href"].split("=")[1]))
-
-    if len(curr_collection_ids) > 1:
-        logger.warning(
-            f"Found different collection ids: {curr_collection_ids}")
-
-    return curr_collection_ids
