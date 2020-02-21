@@ -536,16 +536,21 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
 
             manifest_data[de_row['name']] = de_row['value']
 
-            is_data_file = de_row.get('md5sum') and de_row.get('size') and \
+            is_data_file = de_row.get('md5sum') and \
+                de_row.get('size') and \
                 de_row['name'].startswith('DATA_FILE')
 
             if is_data_file:
-                manifest_data[de_row["name"]] = extract_from_cdata(de_row['value'])
+                manifest_data[de_row["name"]] = \
+                    extract_from_cdata(de_row['value'])
                 logger.debug(manifest_data)
-                manifest_data["%s_bsmn_location" % (de_row['name'], )] = \
-                    nda_bsmn_location(remote_path=manifest_data[de_row["name"]],
-                                      collection_id=manifest_data['collection_id'],
-                                      submission_id=manifest_data['submission_id'])
+
+                location = nda_bsmn_location(
+                    remote_path=manifest_data[de_row["name"]],
+                    collection_id=manifest_data['collection_id'],
+                    submission_id=manifest_data['submission_id'])
+                manifest_data["%s_bsmn_location" % (de_row['name'], )] = location
+
                 manifest_data["%s_md5sum" % (de_row['name'], )] = de_row['md5sum']
                 manifest_data["%s_size" % (de_row['name'], )] = de_row['size']
 
