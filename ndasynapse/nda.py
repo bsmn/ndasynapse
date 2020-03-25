@@ -536,14 +536,13 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
 
             manifest_data[de_row['name']] = de_row['value']
 
-            is_data_file = de_row.get('md5sum') and \
-                de_row.get('size') and \
-                de_row['name'].startswith('DATA_FILE')
+            # TODO: checking on md5sum and size - data files should have them
+            is_data_file = de_row['name'].startswith('DATA_FILE') and \
+                de_row['value'].startswith("<![CDATA[")
 
             if is_data_file:
                 manifest_data[de_row["name"]] = \
                     extract_from_cdata(de_row['value'])
-                logger.debug(manifest_data)
 
                 location = nda_bsmn_location(
                     remote_path=manifest_data[de_row["name"]],
