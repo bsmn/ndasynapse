@@ -152,7 +152,8 @@ def get_guid_collection_manifests(auth, args):
                 logger.warn(f"No data for guid {guid}")
                 continue
 
-            data = ndasynapse.nda.process_guid_data(guid_data, drop_duplicates=True)
+            data = ndasynapse.nda.process_guid_data(guid_data, collection_ids=[int(coll_id)],
+                                                    drop_duplicates=True)
             all_guids_data.append(data)
         
         all_guids_df = pandas.concat(all_guids_data, axis=0, 
@@ -164,7 +165,8 @@ def get_guid_collection_manifests(auth, args):
                                        ignore_index=True, sort=False)
 
     all_collections_df.to_csv(sys.stdout, index=False,
-                              quoting=csv.QUOTE_NONNUMERIC)
+                              quoting=csv.QUOTE_NONNUMERIC,
+                              encoding='utf-8')
 
 
 def main():
