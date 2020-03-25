@@ -543,7 +543,6 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
             if is_data_file:
                 manifest_data[de_row["name"]] = \
                     extract_from_cdata(de_row['value'])
-                logger.debug(manifest_data)
 
                 location = nda_bsmn_location(
                     remote_path=manifest_data[de_row["name"]],
