@@ -536,7 +536,7 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
 
             manifest_data[de_row['name']] = de_row['value']
 
-            # TODO: checking on md5sum and size - data files should have a size.
+            # TODO: checking on md5sum and size - data files should have them
             is_data_file = de_row['name'].startswith('DATA_FILE') and \
                 de_row['value'].startswith("<![CDATA[")
 
