@@ -26,20 +26,25 @@ def get_collection_submissions(auth, args):
                                                  collectionid=[str(x) for x in args.collection_id])
     submissions_processed = ndasynapse.nda.process_submissions(submissions)
 
-    submissions_processed.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+    submissions_processed.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC,
+                                 encoding='utf-8')
 
 def get_submission(auth, args):
     submission = ndasynapse.nda.NDASubmission(auth=auth, submission_id=args.submission_id)
     if args.json:
         sys.stdout.write(json.dumps(submission.submission, indent=2))
     else:
-        submission.processed_submission.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        submission.processed_submission.to_csv(sys.stdout, index=False, 
+                                               quoting=csv.QUOTE_NONNUMERIC,
+                                               encoding='utf-8')
 
 def get_submission_files(auth, args):
     submission = ndasynapse.nda.get_submission_files(auth=auth,
                                                      submissionid=args.submission_id)
     submissions_processed = ndasynapse.nda.process_submission_files(submission)
-    submissions_processed.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+    submissions_processed.to_csv(sys.stdout, index=False,
+                                 quoting=csv.QUOTE_NONNUMERIC,
+                                 encoding='utf-8')
 
 def get_collection_submission_files(auth, args):
     nda_collection = ndasynapse.nda.NDACollection(auth=auth,
@@ -47,7 +52,9 @@ def get_collection_submission_files(auth, args):
     
     sub_files = [sub.submission_files['processed_files'] for sub in nda_collection.submissions] # pylint: disable:line-too-long
     submission_files_processed = pandas.concat(sub_files)
-    submission_files_processed.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+    submission_files_processed.to_csv(sys.stdout, index=False,
+                                      quoting=csv.QUOTE_NONNUMERIC,
+                                      encoding='utf-8')
 
 
 def get_experiments(auth, args):
@@ -58,7 +65,9 @@ def get_experiments(auth, args):
     else:
         data = ndasynapse.nda.process_experiments(data)
         data = data.drop_duplicates()
-        data.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        data.to_csv(sys.stdout, index=False,
+                    quoting=csv.QUOTE_NONNUMERIC,
+                    encoding='utf-8')
 
 
 def get_samples(auth, args):
@@ -69,7 +78,9 @@ def get_samples(auth, args):
     else:
         data_df = ndasynapse.nda.process_guid_data(data)
         data_df = ndasynapse.nda.process_samples(data_df)
-        data_df.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        data_df.to_csv(sys.stdout, index=False, 
+                       quoting=csv.QUOTE_NONNUMERIC,
+                       encoding='utf-8')
 
 
 def get_subjects(auth, args):
@@ -80,7 +91,9 @@ def get_subjects(auth, args):
     else:
         data_df = ndasynapse.nda.subjects_to_df(data)
         data_df = ndasynapse.nda.process_subjects(data_df)
-        data_df.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        data_df.to_csv(sys.stdout, index=False,
+                       quoting=csv.QUOTE_NONNUMERIC,
+                       encoding='utf-8')
 
 _guid_fieldnames = ['submission_id', 'guid']
 
@@ -119,7 +132,9 @@ def get_collection_manifests(auth, args):
     if all_data:
         all_data_df = pandas.concat(all_data, axis=0, 
                                     ignore_index=True, sort=False)
-        all_data_df.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        all_data_df.to_csv(sys.stdout, index=False,
+                           quoting=csv.QUOTE_NONNUMERIC,
+                           encoding='utf-8')
 
 
 def get_guid_collection_manifests(auth, args):
