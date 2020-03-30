@@ -9,3 +9,6 @@ boto>=2.46.1
 
 requests>=2.18.1
 deprecated==1.2.4
+
+pytest
+nose
