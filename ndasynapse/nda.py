@@ -1145,7 +1145,7 @@ class NDACollection(object):
             try:
                 ndafiles = submission.submission_files['files']
             except (IndexError, TypeError):
-                logger.info(f"No submission files for collection {coll_id}.")
+                logger.info(f"No submission files for submission {submission.submission_id}.")
                 continue
 
             manifest_data = ndafiles.manifest_to_df(manifest_type)

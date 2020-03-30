@@ -16,6 +16,7 @@ setup(name='ndasynapse',
       license='MIT',
       packages=['ndasynapse'],
       setup_requires=['numpy>=1.13.1'],
+      tests_requires=["pytest", "nose"],
       install_requires=['synapseclient>=1.7.2',
                         'pandas>=0.20.3',
                         # TODO: revert this once https://github.com/boto/botocore/issues/1872 is fixed.
