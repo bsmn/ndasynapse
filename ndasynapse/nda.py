@@ -19,7 +19,7 @@ pandas.options.display.max_colwidth = 1000
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 METADATA_COLUMNS = ['src_subject_id', 'experiment_id', 'subjectkey',
                     'sample_id_original', 'sample_id_biorepository',
@@ -508,53 +508,55 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
 
     data = []
 
-    for ds_row in guid_data["age"][0]["dataStructureRow"]:
+    for age_data in guid_data["age"]:
+        for ds_row in age_data["dataStructureRow"]:
 
-        dataset_id = str(ds_row['datasetId'])
+            dataset_id = str(ds_row['datasetId'])
 
-        found_collection_ids = get_collection_ids_from_links(
-            data_structure_row=ds_row)
+            found_collection_ids = get_collection_ids_from_links(
+                data_structure_row=ds_row)
 
-        # Check to see if this data comes from the provided collections
-        if collection_ids and not found_collection_ids.intersection(collection_ids):
-            continue
-        else:
-            found_collection_ids = ",".join(
-                [str(x) for x in found_collection_ids])
+            # Check to see if this data comes from the provided collections
+            if collection_ids and not found_collection_ids.intersection(collection_ids):
+                continue
+            else:
+                found_collection_ids = ",".join(
+                    [str(x) for x in found_collection_ids])
 
-        submission_ids = get_submission_ids_from_links(
-            data_structure_row=ds_row)
-        submission_ids = ",".join([str(x) for x in submission_ids])
-        logger.debug(f"Submission IDs: {submission_ids}")
+            submission_ids = get_submission_ids_from_links(
+                data_structure_row=ds_row)
+            submission_ids = ",".join([str(x) for x in submission_ids])
+            logger.debug(f"Dataset ID: {dataset_id}, Submission IDs: {submission_ids}, Collection IDs: {found_collection_ids}")
 
-        manifest_data = dict(collection_id=found_collection_ids,
-                             submission_id=submission_ids,
-                             datasetid=dataset_id)
+            manifest_data = dict(collection_id=found_collection_ids,
+                                submission_id=submission_ids,
+                                datasetid=dataset_id)
 
-        # Get all of the metadata
-        for de_row in ds_row["dataElement"]:
+            # Get all of the metadata
+            for de_row in ds_row["dataElement"]:
 
-            manifest_data[de_row['name']] = de_row['value']
+                manifest_data[de_row['name']] = de_row['value']
 
-            # TODO: checking on md5sum and size - data files should have them
-            is_data_file = de_row['name'].startswith('DATA_FILE') and \
-                de_row['value'].startswith("<![CDATA[")
+                # TODO: checking on md5sum and size - data files should have them
+                is_data_file = de_row['name'].startswith('DATA_FILE') and \
+                    de_row['value'].startswith("<![CDATA[")
 
-            if is_data_file:
-                manifest_data[de_row["name"]] = \
-                    extract_from_cdata(de_row['value'])
+                if is_data_file:
+                    manifest_data[de_row["name"]] = \
+                        extract_from_cdata(de_row['value'])
 
-                location = nda_bsmn_location(
-                    remote_path=manifest_data[de_row["name"]],
-                    collection_id=manifest_data['collection_id'],
-                    submission_id=manifest_data['submission_id'])
-                manifest_data["%s_bsmn_location" % (de_row['name'], )] = location
+                    location = nda_bsmn_location(
+                        remote_path=manifest_data[de_row["name"]],
+                        collection_id=manifest_data['collection_id'],
+                        submission_id=manifest_data['submission_id'])
+                    manifest_data["%s_bsmn_location" % (de_row['name'], )] = location
 
-                manifest_data["%s_md5sum" % (de_row['name'], )] = de_row['md5sum']
-                manifest_data["%s_size" % (de_row['name'], )] = de_row['size']
+                    manifest_data["%s_md5sum" % (de_row['name'], )] = de_row['md5sum']
+                    manifest_data["%s_size" % (de_row['name'], )] = de_row['size']
 
-        manifest_flat_df = pandas.io.json.json_normalize(manifest_data)
-        data.append(manifest_flat_df)
+            manifest_flat_df = pandas.io.json.json_normalize(manifest_data)
+            logger.info(f"{manifest_flat_df.shape[0]} records found for dataset id {dataset_id}, submission id {submission_ids}.")
+            data.append(manifest_flat_df)
 
     # Get the manifest data dictionary into a dataframe and
     # flatten it out if necessary.
@@ -562,7 +564,7 @@ def process_guid_data(guid_data, collection_ids=None, drop_duplicates=False):
         all_guids_df = pandas.concat(data, axis=0, ignore_index=True,
                                      sort=False)
     except ValueError:
-        logger.warning("No records found.")
+        logger.warning(f"No records found.")
         return pandas.DataFrame()
 
     if drop_duplicates:
