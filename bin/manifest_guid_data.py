@@ -140,12 +140,12 @@ def main():
 
                 manifest_data = dict()
 
-                    # Add the collection number to the manifest_data.
-                    manifest_data["collection_id"] = coll_id
+                # Add the collection number to the manifest_data.
+                manifest_data["collection_id"] = coll_id
 
-                    # Get all of the metadata
-                    for de_row in ds_row["dataElement"]:
-                        manifest_data[de_row["name"]] = de_row["value"]
+                # Get all of the metadata
+                for de_row in ds_row["dataElement"]:
+                    manifest_data[de_row["name"]] = de_row["value"]
 
                 # Get the manifest data dictionary into a dataframe and
                 # flatten it out if necessary.
