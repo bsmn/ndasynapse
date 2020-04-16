@@ -126,7 +126,8 @@ def main():
 
             # The documentation for the data structure is here:
             # https://nda.nih.gov/api/guid/docs/swagger-ui.html#!/guid/guidXMLTableUsingGET
-            for ds_row in guid_data["age"][0]["dataStructureRow"]:
+            for age_row in guid_data["age"]:
+                for ds_row in age_row["dataStructureRow"]:
 
                 curr_collection_ids = get_collection_ids_from_links(row=ds_row)
                 curr_collection_ids = [str(x) for x in curr_collection_ids]
@@ -139,12 +140,12 @@ def main():
 
                 manifest_data = dict()
 
-                # Add the collection number to the manifest_data.
-                manifest_data["collection_id"] = coll_id
+                    # Add the collection number to the manifest_data.
+                    manifest_data["collection_id"] = coll_id
 
-                # Get all of the metadata
-                for de_row in ds_row["dataElement"]:
-                    manifest_data[de_row["name"]] = de_row["value"]
+                    # Get all of the metadata
+                    for de_row in ds_row["dataElement"]:
+                        manifest_data[de_row["name"]] = de_row["value"]
 
                 # Get the manifest data dictionary into a dataframe and
                 # flatten it out if necessary.
