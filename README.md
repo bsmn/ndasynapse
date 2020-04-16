@@ -1,8 +1,3 @@
-CI | Branch | Build Status |Coverage
---- | --- | --- | ----
-Travis | develop | [![Build Status](https://travis-ci.com/bsmn/ndasynapse.svg?branch=develop)](https://travis-ci.com/bsmn/ndasynapse)	| 
-Travis | master | [![Build Status](https://travis-ci.com/bsmn/ndasynapse.svg?branch=master)](https://travis-ci.com/bsmn/ndasynapse) | 
-
 # A client for querying NDA and synchronizing to Synapse
 
 This package provides an interface to the [NIMH Data Archive Web Services](https://data-archive.nimh.nih.gov/API). It can be used to query data in NDA as well as synchronize files and metadata (annotations) stored in an NDA-hosted Amazon S3 bucket to a [Synapse Project](https://www.synapse.org/bsmn_private).
@@ -11,6 +6,12 @@ This package provides an interface to the [NIMH Data Archive Web Services](https
 
 ```
 pip install git+https://github.com/bsmn/ndasynapse.git
+```
+
+Since release 1.0.0, this package is available on PyPi:
+
+```
+pip install ndasynapse
 ```
 
 ## Configuration
@@ -57,7 +58,11 @@ git pull upstream develop
 
 > *A code maintainer must review and accept your pull request.* A code review (which happens with both the contributor and the reviewer present) is required for contributing. This can be performed remotely (e.g., Skype, Hangout, or other video or phone conference).
 
+### Releases
+
 This package uses semantic versioning for releasing new versions. The version should be updated on the `develop` branch as changes are reviewed and merged in by a code maintainer. The version for the package is maintained in the [ndasynapse/__version__.py](ndasynapse/__version__.py) file.
+
+A [GitHub Action workflow](.github/workflows/pythonpublish.yml) pushes GitHub release tags to [PyPi](https://pypi.org/project/ndasynapse/). Create a new GitHub release and the action will trigger. 
 
 ### Testing
 
