@@ -129,29 +129,29 @@ def main():
             for age_row in guid_data["age"]:
                 for ds_row in age_row["dataStructureRow"]:
 
-                curr_collection_ids = get_collection_ids_from_links(row=ds_row)
-                curr_collection_ids = [str(x) for x in curr_collection_ids]
+                    curr_collection_ids = get_collection_ids_from_links(row=ds_row)
+                    curr_collection_ids = [str(x) for x in curr_collection_ids]
 
-                # If the current collection ID we're interested in isn't in
-                #  the current ids then we should keep going - this data is
-                # not relevant now!
-                if coll_id not in curr_collection_ids:
-                    continue
+                    # If the current collection ID we're interested in isn't in
+                    #  the current ids then we should keep going - this data is
+                    # not relevant now!
+                    if coll_id not in curr_collection_ids:
+                        continue
 
-                manifest_data = dict()
+                    manifest_data = dict()
 
-                # Add the collection number to the manifest_data.
-                manifest_data["collection_id"] = coll_id
+                    # Add the collection number to the manifest_data.
+                    manifest_data["collection_id"] = coll_id
 
-                # Get all of the metadata
-                for de_row in ds_row["dataElement"]:
-                    manifest_data[de_row["name"]] = de_row["value"]
+                    # Get all of the metadata
+                    for de_row in ds_row["dataElement"]:
+                        manifest_data[de_row["name"]] = de_row["value"]
 
-                # Get the manifest data dictionary into a dataframe and
-                # flatten it out if necessary.
-                manifest_flat_df = pd.io.json.json_normalize(manifest_data)
-                all_guids_df = pd.concat([all_guids_df, manifest_flat_df],
-                                         axis=0, ignore_index=True, sort=False)
+                    # Get the manifest data dictionary into a dataframe and
+                    # flatten it out if necessary.
+                    manifest_flat_df = pd.io.json.json_normalize(manifest_data)
+                    all_guids_df = pd.concat([all_guids_df, manifest_flat_df],
+                                             axis=0, ignore_index=True, sort=False)
 
                 # Get rid of any rows that are exact duplicates except for
                 # the manifest ID column
