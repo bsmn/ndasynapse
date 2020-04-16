@@ -68,7 +68,7 @@ def main():
 
     # If there is a specified GUID to remove from the data, get rid of it.
     if args.remove_guid is not None:
-      sample_df = sample_df.loc[sample_df["subjectkey"] != args.remove_guid]
+        sample_df = sample_df.loc[sample_df["subjectkey"] != args.remove_guid]
 
     # Make sure that the required columns are in the dataframe.
     if not ({'experiment_id', column_name}.issubset(sample_df.columns)):
