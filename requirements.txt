@@ -1,0 +1,14 @@
+synapseclient>=1.7.2
+pandas>=0.20.3
+
+# TODO: revert this once https://github.com/boto/botocore/issues/1872 is fixed.
+# this was boto3>=1.4.2
+boto3==1.10.6 
+botocore==1.13.9
+boto>=2.46.1
+
+requests>=2.18.1
+deprecated==1.2.4
+
+pytest
+nose

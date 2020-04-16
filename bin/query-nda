@@ -1,18 +1,12 @@
 #!/usr/bin/env python
 
 import csv
-import io
-import os
 import sys
 import json
 import logging
-import uuid
-
-from deprecated import deprecated
-import requests
+import multiprocessing
 import pandas
-import boto3
-import synapseclient
+
 import ndasynapse
 
 pandas.options.display.max_rows = None
@@ -23,113 +17,199 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-def get_guid(auth, args, config=None):
+def get_guid(auth, args):
     guids = ndasynapse.nda.get_guid(auth, args.guid)
-    
-def get_collection_submissions(auth, args, config=None):
+
+def get_collection_submissions(auth, args):
     logger.debug("collectionids = {collection_id}".format(collection_id=args.collection_id))
-    submissions = ndasynapse.nda.get_submissions(auth, collectionid=[str(x) for x in args.collection_id])
+    submissions = ndasynapse.nda.get_submissions(auth=auth, 
+                                                 collectionid=[str(x) for x in args.collection_id])
     submissions_processed = ndasynapse.nda.process_submissions(submissions)
 
-    submissions_processed.to_csv(sys.stdout, index=False)
+    submissions_processed.to_csv(sys.stdout, index=False, quoting=csv.QUOTE_NONNUMERIC,
+                                 encoding='utf-8')
 
-def get_submission(auth, args, config=None):
-    submission = ndasynapse.nda.get_submission(auth, submissionid=args.submission_id)
-    submissions_processed = ndasynapse.nda.process_submissions(submission)
-    submissions_processed.to_csv(sys.stdout, index=False)
+def get_submission(auth, args):
+    submission = ndasynapse.nda.NDASubmission(auth=auth, submission_id=args.submission_id)
+    if args.json:
+        sys.stdout.write(json.dumps(submission.submission, indent=2))
+    else:
+        submission.processed_submission.to_csv(sys.stdout, index=False, 
+                                               quoting=csv.QUOTE_NONNUMERIC,
+                                               encoding='utf-8')
 
-def get_submission_files(auth, args, config=None):
-    submission = ndasynapse.nda.get_submission_files(auth, submissionid=args.submission_id)
+def get_submission_files(auth, args):
+    submission = ndasynapse.nda.get_submission_files(auth=auth,
+                                                     submissionid=args.submission_id)
     submissions_processed = ndasynapse.nda.process_submission_files(submission)
-    submissions_processed.to_csv(sys.stdout, index=False)
+    submissions_processed.to_csv(sys.stdout, index=False,
+                                 quoting=csv.QUOTE_NONNUMERIC,
+                                 encoding='utf-8')
 
-def get_collection_submission_files(auth, args, config=None):
-    submissions_obj = ndasynapse.nda.NDASubmission(config=config,
-                                                   collection_id=args.collection_id)
+def get_collection_submission_files(auth, args):
+    nda_collection = ndasynapse.nda.NDACollection(auth=auth,
+                                                  collection_id=args.collection_id) # pylint: disable:line-too-long
     
-
-    sub_files =  [s['processed_files'] for s in submissions_obj.submission_files] # pylint: disable:line-too-long
+    sub_files = [sub.submission_files['processed_files'] for sub in nda_collection.submissions] # pylint: disable:line-too-long
     submission_files_processed = pandas.concat(sub_files)
-    submission_files_processed.to_csv(sys.stdout, index=False)
+    submission_files_processed.to_csv(sys.stdout, index=False,
+                                      quoting=csv.QUOTE_NONNUMERIC,
+                                      encoding='utf-8')
 
 
-def get_experiments(auth, args, config=None):
-    expts = ndasynapse.nda.get_experiments(auth,
-                                           args.experiment_id)
-    
-    expts = ndasynapse.nda.process_experiments(expts)
-    expts = expts.drop_duplicates()
-    expts.to_csv(sys.stdout, index=False)
+def get_experiments(auth, args):
+    data = ndasynapse.nda.get_experiments(auth, args.experiment_id)
 
-def get_samples(auth, args, config=None):
-    samples_data = ndasynapse.nda.get_samples(auth=auth, guid=args.guid)
-    samples_data_df = ndasynapse.nda.sample_data_files_to_df(samples_data)
-    samples_data_df = ndasynapse.nda.process_samples(samples_data_df)
-    samples_data_df.to_csv(sys.stdout, index=False)
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data = ndasynapse.nda.process_experiments(data)
+        data = data.drop_duplicates()
+        data.to_csv(sys.stdout, index=False,
+                    quoting=csv.QUOTE_NONNUMERIC,
+                    encoding='utf-8')
 
-def get_subjects(auth, args, config=None):
+
+def get_samples(auth, args):
+    data = ndasynapse.nda.get_samples(auth=auth, guid=args.guid)
+
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data_df = ndasynapse.nda.process_guid_data(data)
+        data_df = ndasynapse.nda.process_samples(data_df)
+        data_df.to_csv(sys.stdout, index=False, 
+                       quoting=csv.QUOTE_NONNUMERIC,
+                       encoding='utf-8')
+
+
+def get_subjects(auth, args):
     data = ndasynapse.nda.get_subjects(auth=auth, guid=args.guid)
-    data_df = ndasynapse.nda.subjects_to_df(data)
-    data_df = ndasynapse.nda.process_subjects(data_df)
-    data_df.to_csv(sys.stdout, index=False)
+
+    if args.json:
+        sys.stdout.write(json.dumps(data, indent=2))
+    else:
+        data_df = ndasynapse.nda.subjects_to_df(data)
+        data_df = ndasynapse.nda.process_subjects(data_df)
+        data_df.to_csv(sys.stdout, index=False,
+                       quoting=csv.QUOTE_NONNUMERIC,
+                       encoding='utf-8')
 
 _guid_fieldnames = ['submission_id', 'guid']
 
-def get_collection_guids(auth, args, config=None):
-    submissions = ndasynapse.nda.NDASubmission(config=config, 
-                                               collection_id=args.collection_id)
-    guids = submissions.get_guids()
-    wr = csv.DictWriter(sys.stdout, fieldnames=_guid_fieldnames)
-    wr.writeheader()
-    wr.writerows(guids)
 
-def get_collection_manifests(auth, args, config=None):
-    logger.warn("Information in the collection manifests may be out of date.")
-    data_frames = []
-    # associated_files_data_frames = []
+def get_collection_guids(auth, args):
+    nda_collection = ndasynapse.nda.NDACollection(
+        auth=auth, collection_id=args.collection_id)
+    guids = [str(guid) for guid in nda_collection.guids]
+    sys.stdout.write("\n".join(guids))
+
+
+def get_collection_manifests(auth, args):
+    """Get all original manifests submitted with each submission in a collection.
+
+    NDA does not update these files if metadata change requests are made.
+    They only update metadata in their database, accessible through the GUID API.
+    Records obtained here should be used for historical purposes only.
+
+    Args:
+        auth: a requests.auth.HTTPBasicAuth object authenticating to NDA.
+        args: arpgarse arguments
+    Returns:
+        Output to stdout in CSV format of all submission manifests concatenated together.
+    """
     
+    all_data = []
+
     for collection_id in args.collection_id:
-        submissions = ndasynapse.nda.NDASubmission(config=config, collection_id=collection_id)
-        for submission in submissions.submission_files:
-            logging.debug('GUIDs from submission {} in collection {}'.
-                          format(submission['submission_id'],
-                                 submission['collection_id']))
-            for data_file in submission['files'].data_files:
-                data_file_as_string = data_file['content'].decode('utf-8')
-                if args.manifest_type in data_file_as_string:
-                    data = pandas.read_csv(io.StringIO(data_file_as_string), skiprows=1)
-                    data['collection_id'] = submission['collection_id']
-                    data['submission_id'] = submission['submission_id']
-                    data_frames.append(data)
+        nda_collection = ndasynapse.nda.NDACollection(
+            auth=auth, collection_id=collection_id)
 
-            # associated_files = pandas.DataFrame.from_dict(submission['files'].associated_files)
-            # associated_files['collection_id'] = submission['collection_id']
-            # associated_files['submission_id'] = submission['submission_id']
-            # associated_files_data_frames.append(associated_files)
+        manifest_data = nda_collection.get_collection_manifests(
+            manifest_type=args.manifest_type)
+        all_data.append(manifest_data)
 
-    # if associated_files_data_frames:
-    #     print(pandas.concat(associated_files_data_frames))
+    if all_data:
+        all_data_df = pandas.concat(all_data, axis=0, 
+                                    ignore_index=True, sort=False)
+        all_data_df.to_csv(sys.stdout, index=False,
+                           quoting=csv.QUOTE_NONNUMERIC,
+                           encoding='utf-8')
 
-    if data_frames:
-        pandas.concat(data_frames).to_csv(sys.stdout, index=False)
-    
+
+def get_guid_collection_manifests(auth, args):
+    pool = multiprocessing.dummy.Pool(args.parallel)
+
+    guid_worker = lambda guid: ndasynapse.nda.get_guid_data(
+        auth=auth, subjectkey=guid,
+        short_name=args.manifest_type)
+
+    collection_worker = lambda coll_id: ndasynapse.nda.NDACollection(auth=auth,
+                                                                     collection_id=coll_id)
+
+    collections = pool.map(collection_worker, args.collection_id)
+
+    all_collections_data = [] #pandas.DataFrame()
+
+    for nda_collection in collections:
+
+        all_guids_data = []
+        coll_id = nda_collection.collection_id
+        guid_data_list = pool.map(guid_worker, nda_collection.guids)
+
+        for (guid, guid_data) in zip(nda_collection.guids, guid_data_list):
+            # It is possible for there to be no data for the specified
+            # manifest type. If this is the case, the GUID API will return an
+            # OK status (status_code = 200) and an empty data structure, which
+            # will cause the code to crash further down, so check to make sure
+            # that the data structure is not empty before continuing.
+            if guid_data is None or not guid_data["age"]:
+                logger.warn(f"No data for guid {guid}")
+                continue
+
+            data = ndasynapse.nda.process_guid_data(guid_data, collection_ids=[int(coll_id)],
+                                                    drop_duplicates=True)
+            all_guids_data.append(data)
+        
+        all_guids_df = pandas.concat(all_guids_data, axis=0, 
+                                     ignore_index=True, sort=False)
+
+        all_collections_data.append(all_guids_df)
+
+    all_collections_df = pandas.concat(all_collections_data, axis=0, 
+                                       ignore_index=True, sort=False)
+
+    all_collections_df.to_csv(sys.stdout, index=False,
+                              quoting=csv.QUOTE_NONNUMERIC,
+                              encoding='utf-8')
+
+
 def main():
 
     import argparse
-    import json
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--version", action="store_true", 
+                        default=False, help="Print version.")
     parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--json", action="store_true", default=False,
+                        help="Output in JSON format, if possible. Default is to output in CSV format.")
+    parser.add_argument("--parallel", type=int, default=4,
+                        help="Run in parallel threads, if enabled.")
 
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_get_samples = subparsers.add_parser('get-samples', help='Get samples from NDA.')
-    parser_get_samples.add_argument('--guid', type=str, help='NDA subject key (GUID).')
+    parser_get_samples = subparsers.add_parser('get-samples',
+                                               help='Get samples from NDA.')
+    parser_get_samples.add_argument('--guid', type=str, 
+                                    help='NDA subject key (GUID).')
     parser_get_samples.set_defaults(func=get_samples)
 
-    parser_get_subjects = subparsers.add_parser('get-subjects', help='Get subjects from NDA.')
-    parser_get_subjects.add_argument('--guid', type=str, help='NDA subject key (GUID).')
+    parser_get_subjects = subparsers.add_parser('get-subjects',
+                                                help='Get subjects from NDA.')
+    parser_get_subjects.add_argument('--guid', type=str,
+                                     help='NDA subject key (GUID).')
     parser_get_subjects.set_defaults(func=get_subjects)
 
     parser_get_experiments = subparsers.add_parser('get-experiments', help='Get experiments from NDA.')
@@ -164,21 +244,41 @@ def main():
                                              help='NDA collection ID.')
     parser_get_collection_guids.set_defaults(func=get_collection_guids)
 
-    parser_get_collection_manifest = subparsers.add_parser('get-collection-manifests', help='Get manifest files that were submitted in an NDA collection.')
-    parser_get_collection_manifest.add_argument('--collection_id', type=int, nargs="+", help='NDA collection ID.')
+    parser_get_collection_manifest = subparsers.add_parser(
+        'get-collection-manifests',
+        help='Get manifest files that were submitted in an NDA collection.')
+    parser_get_collection_manifest.add_argument('--collection_id', type=int, 
+                                                nargs="+", help='NDA collection ID.')
     parser_get_collection_manifest.add_argument('--manifest_type', type=str,
-                                                help='Which manifest type to get, one of "genomics_sample", "genomics_subject", or "nichd_btb".')
+                                                help='Manifest type to retrieve.',
+                                                choices=["genomics_sample", 
+                                                         "genomics_subject",
+                                                         "nichd_btb"])
     parser_get_collection_manifest.set_defaults(func=get_collection_manifests)
+
+    parser_get_guid_collection_manifests = subparsers.add_parser(
+        'get-guid-collection-manifests',
+        help='Get manifest data for for completed submissions using the NDA GUID service.')
+    parser_get_guid_collection_manifests.add_argument('--collection_id', type=int, 
+                                                     nargs="+", help='NDA collection ID.')
+    parser_get_guid_collection_manifests.add_argument('--manifest_type', type=str,
+                                                    help='Manifest type to retrieve.',
+                                                    choices=["genomics_sample03", 
+                                                             "genomics_subject02",
+                                                             "nichd_btb02"])
+    parser_get_guid_collection_manifests.set_defaults(func=get_guid_collection_manifests)
 
     args = parser.parse_args()
 
-    logger.info(args.config)
+    if args.version:
+        print(ndasynapse.__version__)
+        sys.exit()
     
     config = json.load(open(args.config))
     auth = ndasynapse.nda.authenticate(config)
     logger.info(auth)
     
-    args.func(auth, args, config=config['nda'])
+    args.func(auth, args)
 
 
 if __name__ == "__main__":

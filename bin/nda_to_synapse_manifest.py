@@ -15,6 +15,7 @@ pandas.options.display.max_rows = None
 pandas.options.display.max_columns = None
 pandas.options.display.max_colwidth = 1000
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
@@ -22,9 +23,6 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 ch.setLevel(logging.DEBUG)
 logger.addHandler(ch)
-
-# NDA Configuration
-REFERENCE_GUID = 'NDAR_INVRT663MBL'
 
 # This is an old genomics subject
 EXCLUDE_GENOMICS_SUBJECTS = ('92027', )
@@ -34,8 +32,6 @@ NDA_BUCKET_NAME = 'nda-bsmn'
 # Synapse configuration
 storage_location_id = '9209'
 PROJECT_ID = 'syn5902559'
-UUID_COLUMNS = ['sample_id_biorepository', 'sample_id_original',
-                'experiment_id', 'datasetid']
 
 def main():
 
@@ -44,11 +40,9 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", default=False)
-    parser.add_argument("--guids", type=str, default=REFERENCE_GUID, nargs="+",
-                        help="GUID to search for. [default: %(default)s]")
+    parser.add_argument("--guids", type=str, nargs="+",
+                        help="GUID to search for.")
     parser.add_argument("--get_experiments", action="store_true", default=False)
-    parser.add_argument("--synapse_data_folder", nargs=1)
-    parser.add_argument("--uuid_columns", type=str, default=None)
     parser.add_argument("--dataset_ids", default=None, nargs="*")
     parser.add_argument("--config", type=str, default=None)
 
@@ -116,7 +110,7 @@ def main():
             expts = ndasynapse.nda.process_experiments(expts)
             expts = expts.drop_duplicates()
 
-            logger.info("Experiments processed: %s" % (expts,))
+            logger.info(f"{expts.shape[0]} experiments found.")
             metadata = metadata.merge(expts, how="left", left_on="experiment_id",
                                       right_on="experiment_id")
             logger.info("Retrieved experiments.")
