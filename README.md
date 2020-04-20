@@ -8,7 +8,7 @@ This package provides an interface to the [NIMH Data Archive Web Services](https
 pip install git+https://github.com/bsmn/ndasynapse.git
 ```
 
-Since release 1.0.0, this package is available on PyPi:
+Since release 1.0.2, this package is available on [PyPi](https://pypi.org/project/ndasynapse/):
 
 ```
 pip install ndasynapse
